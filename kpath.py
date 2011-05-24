@@ -86,6 +86,10 @@ def BellmanFord(t):
 				n[u] = v
 	return n,d
 
+def ComputeCost(pathlinks):
+	c = sum(linkload[l] for l in pathlinks)
+	return c
+
 def FindKPaths(s,t):
 	"""
 	Find k paths joining nodes s and t. The topology is stored in array
@@ -101,22 +105,92 @@ def FindKPaths(s,t):
 	#    delta = the "delta value" of every link (w.r.t. `links')
 	#    deltaSorted = list version of `delta' sorted in ascending delta value
 	#    paths = array to store the paths joining s to t, manipulated with heapq
+	#    leaves = the leave nodes of the heap `paths'
 	tree, dist = BellmanFord(t)
 	intree = [e for e in range(len(links)) if tree[links[e][0]]==links[e][1]]
 	sidetrk = [e for e in range(len(links)) if e not in intree and tree[links[e][1]]!=links[e][0]]
 	delta = dict([e,1+dist[links[e][1]]-dist[links[e][0]]] for e in range(len(links)))
-	deltaSorted = [(k,delta[k]) for k in delta.keys()].sort(lambda x,y: cmp(x[1],y[1]))
+	deltaSorted = [(e,delta[k]) for e in delta.keys()].sort(lambda x,y: cmp(x[1],y[1]))
 	paths = []
+	leaves = []
 
 	# The default shortest path
 	heapq.heappush(paths,(dist[s],[]))
-	print nodes
-	print links
-	print tree
-	print dist
-	print [links[e] for e in intree]
-	print [links[e] for e in sidetrk]
-	print [[links[i],delta[i]] for i in range(len(delta))]
+	heapq.heappush(leaves,paths[0])
+	# Find 10*k number of paths
+	while len(paths) < 10*k:
+		# In this while-loop, a leaf node from the heap `paths' are
+		# retrieved and a sidetrack edge is added to it to form a new
+		# path. Once a new path is found, add to the heap as a new
+		# leaf node.
+		leafdist, leafside = heapq.heappop(leaves)
+		sidenode = set(links[e][0] for e in leafside)	# nodes that needs to be sidetracked
+		for edge in sidetrk:
+			# verify if this is a loop-free path
+			if links[edge][0] in sidenode:
+				# the sidetrack edge in consideration is paralleled with another sidetrack edge
+				break
+			visited = set()	# visited nodes
+			hasLoop = False
+			edgeUsed = False
+			current = s
+			while current != t:
+				visited.add(current);
+				if current == links[edge][0]:
+					current = links[edge][1]
+					edgeUsed = True
+				elif current in sidenode:
+					ee = [e for e in leafside if links[e][0]==current]
+					current = links[ee[0]][1]
+				else:
+					current = tree[current]
+				if current in visited:
+					hasLoop = True
+					break
+			if not hasLoop and edgeUsed:
+				# new loop-free path is found, add to repositories
+				newpath = (leafdist+delta[edge], leafside[:])
+				newpath[1].append(edge)
+				heapq.heappush(paths, newpath)
+				heapq.heappush(leaves, newpath)
+		# for safe: if we exhausted all the paths
+		if len(leaves)==0: break
+
+	# Amongst the 10*k paths, find the best k
+	pathcost = []
+	for p in paths:
+		pathlinks = []
+		current = s
+		sidenode = set(links[e][0] for e in p[1])
+		while current != t:
+			if current in sidenode:
+				ee = [e for e in p[1] if links[e][0]==current]
+				current = links[ee[0]][1]
+				pathlinks.append(ee[0])
+			else:
+				ee = [e for e in range(len(links)) if links[e]==(current, tree[current])]
+				current = tree[current]
+				pathlinks.append(ee[0])
+		pathcost.append((ComputeCost(pathlinks), pathlinks))
+	indices = range(len(paths))
+	random.shuffle(indices)
+	sortedcost = sorted(i[0] for i in pathcost)
+	selectedPath = []
+	assert(k <= len(paths))
+	while len(selectedPath) < k:
+		for i in indices:
+			if sortedcost[0] == pathcost[i][0]:
+				selectedPath.append(pathcost[i][1])
+				sortedcost = sortedcost[1:]
+				indices.remove(i)
+				break
+	print "Paths selected for %d -> %d:" % (s,t)
+	for p in selectedPath:
+		pathnode = [links[p[0]][0]]
+		for l in p:
+			pathnode.append(links[l][1])
+		print pathnode
+	return selectedPath
 
 ###########################################################
 # Step 1:
@@ -127,244 +201,25 @@ nodes, links, traffic = ReadInput(topofile, matrixfile)
 # Step 2:
 #   Path-finding for each pair
 
+linkload = [0 for l in links]
 pairs = traffic.keys()
 random.shuffle(pairs)
+allpaths = []
 for pair in pairs:
+	# Find k paths
 	paths = FindKPaths(pair[0], pair[1])
+	# For each link in the path, increase the load by rho/k
+	for l in [ll for p in paths for ll in p]:
+		linkload[l] += traffic[pair]/k
+	# Keep the paths
+	allpaths.extend(paths)
+
+###########################################################
+# Step 3:
+#   Output result to console
+print "All the paths:"
+print "\n".join(str([links[j] for j in i]) for i in allpaths)
+print "Link loads"
+print "\n".join([str([links[i],linkload[i]]) for i in range(len(linkload))])
 
 sys.exit(1)
-
-###########################################################
-# Helper functions
-
-def FindPath(u,v,w):
-	"""Find the shortest path from u to v using weight w, according to Dijkstra's algorithm"""
-	d = [0 if n == u else float('inf') for n in range(len(nodes))]	# distance to n from u
-	p = [None for n in nodes]	# previous node to reach n
-	n = range(len(nodes))		# candidate nodes
-
-	while (len(n)):
-		# find the node with shortest distance
-		t = min(n, key=lambda x: d[x])
-		# if the node isaccessible, remove it from n
-		if d[t] == float('inf'): break
-		n = [x for x in n if x != t]
-		# list all incident links
-		inlink = [x for x in range(len(links)) if t in links[x]]
-		# update all neighbour nodes
-		for e in inlink:
-			# if neighbour node s is still in n
-			s = links[e][0] if links[e][1] == t else links[e][1]
-			if s not in n: continue
-			# compute the distance from u to s if via t
-			dist = d[t] + w[e]
-			# if we have a shorter distance, update d and p
-			if dist < d[s]:
-				d[s] = dist
-				p[s] = t
-	# construct the path by backtracking on p
-	path = [v]
-	t = v
-	while p[t] != None:
-		t = p[t]
-		path.append(t)
-	return path[-1::-1]
-
-def N2E(n):
-	"""Convert a node-based path into link-based path"""
-	path = []
-	for i in range(len(n)-1):
-		e = [l for l in range(len(links)) if links[l] == sorted([n[i], n[i+1]])][0]
-		path.append(e)
-	return path
-
-def ComputeCost(multipath, controller):
-	allLinks = list(set([link for mpath in controller for path in mpath for link in path]))
-	countOld = len(allLinks)
-	allLinks.extend([link for path in multipath for link in path])
-	countNew = len(list(set(allLinks)))
-	return (countNew - countOld)*4 + countOld * 1
-
-def CountNewLinks(multipath, controller):
-	allLinks = list(set([link for mpath in controller for path in mpath for link in path]))
-	countOld = len(allLinks)
-	allLinks.extend([link for path in multipath for link in path])
-	countNew = len(list(set(allLinks)))
-	return (countNew - countOld)
-
-###########################################################
-# Part 1:
-#   Read in the topology file
-topoFile = open(sys.argv[1],"r")
-nodes = []
-nodeDic = {}
-links = []
-for line in topoFile:
-	token = line.split()
-	if (len(token) < 2): continue
-	if token[0] == "N":
-		nodes.append(int(token[1]))
-		nodeDic[token[1]] = len(nodes) - 1;
-	elif token[0] == "l":
-		e = sorted([nodeDic[token[1]], nodeDic[token[2]]])
-		links.append(e)
-topoFile.close()
-print "The %d links between %d nodes:" % (len(links), len(nodes))
-#print "\n".join(["%d - %d" % (e[0], e[1]) for e in links]);
-
-###########################################################
-# Part 2:
-#   Find k redundant paths between any two nodes
-mpaths = []
-for u in range(len(nodes)-1):
-	for v in range(u+1,len(nodes)):
-		#print "The %d best paths from %d to %d: (in terms of links)" % (k, u, v)
-		weight = [1 for e in links]	# initial weight
-		uv = []				# holds the multipath from u to v
-		for i in range(k):
-			# find the path
-			nodepath = FindPath(u, v, weight)
-			linkpath = N2E(nodepath)
-			uv.append(linkpath)
-			# update weight
-			for e in linkpath: weight[e] += len(links)
-			#print "%s (%s)" % ("-".join([str(n) for n in nodepath]), "".join(["%4d" % (e) for e in linkpath]))
-		mpaths.append(uv)
-
-# Print all paths
-print "All paths:"
-print "\n".join(", ".join("".join("%4d" % (link) for link in path) for path in mpath) for mpath in mpaths)
-
-###########################################################
-# Part 3:
-#   Consolidate paths into controllers by stochastic optimization technique.
-sostart = time.clock()
-ctrl = map(lambda x: [], range(sigma))
-ctrlList = range(sigma)
-random.shuffle(mpaths)
-for mpath in mpaths:
-	#print "Multipath: %s" % (" and ".join(["-".join([str(node) for node in path]) for path in mpath]))
-	cost = map(lambda s: ComputeCost(mpath, ctrl[s]), range(sigma))
-
-	# put the multipath into the controller that costs least
-	mincost = min(cost)
-	random.shuffle(ctrlList)
-	for i in ctrlList:
-		if cost[i] != mincost: continue
-		ctrl[i].append(mpath)
-		#print "Cost vector (%s); multipath added to server %d" % (",".join([str(c) for c in cost]), i)
-		break
-sotime = time.clock() - sostart
-
-###########################################################
-# Part 4:
-#   Print the configuration
-ctrlLinkCnt = [0] * sigma
-for i in range(sigma):
-	print "Controller %d:" % (i)
-	#print "\n".join("  "+"".join("%4d" % (link) for link in path) for mpath in ctrl[i] for path in mpath)
-	print "".join("%3d" % (k) for k in sorted(set(link for mpath in ctrl[i] for path in mpath for link in path)))
-	ctrlLinkCnt[i] = len(set(link for mpath in ctrl[i] for path in mpath for link in path))
-	print "Totally %d links" % (ctrlLinkCnt[i])
-print "Link count vector (%s)" % (",".join(str(i) for i in ctrlLinkCnt))
-pathlen = [len(path) for mpath in mpaths for path in mpath]
-print "Average path length %f hops, max %d, min %d" % (float(sum(pathlen))/len(pathlen), max(pathlen), min(pathlen))
-print "Total links used: %d out of %d" % (len(set(link for c in ctrl for mpath in c for path in mpath for link in path)), len(links))
-print "Time elapsed: %f" % (sotime)
-
-###########################################################
-# Part 5:
-#   Refinement using simulated annealing
-refstart = time.clock()
-ctrlBest = copy.deepcopy(ctrl)
-ctrlLinkCntBest = ctrlLinkCnt[:]
-thermo = 100.0	# thermal energy
-while thermo > 0:
-	# Get a neighbouring solution from ctrl by moving one multipath away from the maxset
-	maxset = max(range(sigma), key=lambda x: ctrlLinkCnt[x])
-	# Pick a random multipath from the maxset and compute the cost if moved to another controller
-	m = random.choice(range(len(ctrl[maxset])))
-	newlinks = [CountNewLinks(ctrl[maxset][m], ctrl[i]) for i in range(sigma)]
-	newlinks[maxset] = float('inf')
-	# The one with least new link is the candidate (minset)
-	minset = min(range(sigma), key=lambda x: newlinks[x])
-	ctrlTemp = copy.deepcopy(ctrl)
-	ctrlTemp[minset].append(ctrlTemp[maxset][m])
-	ctrlTemp[maxset] = [ctrlTemp[maxset][i] for i in range(len(ctrlTemp[maxset])) if i != m]
-	ctrlTempLinkCnt = [len(list(set([link for mpath in ctrlTemp[i] for path in mpath for link in path]))) for i in range(sigma)]
-	# Move definitely if it yields a better solution, otherwise move with a probability
-	delta = max(ctrlTempLinkCnt) - max(ctrlLinkCnt)
-	if delta < 0 or random.random() < math.exp(-delta/thermo):
-		ctrl = ctrlTemp
-		ctrlLinkCnt = ctrlTempLinkCnt
-	# Update best if necessary
-	if max(ctrlTempLinkCnt) < max(ctrlLinkCntBest):
-		ctrlBest = copy.deepcopy(ctrl)
-		ctrlLinkCntBest = ctrlLinkCnt[:]
-	# Update temperature
-	thermo -= 0.01
-reftime = time.clock() - refstart
-
-###########################################################
-# Part 6:
-#   Print refined configuration
-for i in range(sigma):
-	print "Refined Controller %d:" % (i)
-	#print "\n".join(["  "+"".join(["%4d" % (link) for link in path]) for mpath in ctrlCopy[i] for path in mpath])
-	print "".join(["%3d" % (k) for k in sorted(list(set([link for mpath in ctrlBest[i] for path in mpath for link in path])))])
-	print "Totally %d links" % (ctrlLinkCntBest[i])
-print "Refined link count vector (%s)" % (",".join([str(i) for i in ctrlLinkCntBest]))
-print "Time elapsed: %f" % (reftime)
-###########################################################
-# Part 7:
-#   Solution using simulated annealing with random starter
-sastart = time.clock()
-ctrl = [[] for i in range(sigma)]
-for mpath in mpaths:
-	ctrl[int(random.random()*sigma)].append(mpath)
-ctrlLinkCnt = [len(set(link for mpath in ctrl[i] for path in mpath for link in path)) for i in range(sigma)]
-ctrlBest = copy.deepcopy(ctrl)
-ctrlLinkCntBest = ctrlLinkCnt[:]
-thermo = 100.0	# thermal energy
-for i in range(sigma):
-	print "Sim Ann Controller %d (starting point):" % (i)
-	#print "\n".join(["  "+"".join(["%4d" % (link) for link in path]) for mpath in ctrlCopy[i] for path in mpath])
-	print "".join(["%3d" % (k) for k in sorted(list(set([link for mpath in ctrlBest[i] for path in mpath for link in path])))])
-	print "Totally %d links" % (ctrlLinkCntBest[i])
-print "Sim ann link count vector (%s)" % (",".join([str(i) for i in ctrlLinkCntBest]))
-while thermo > 0:
-	# Get a neighbouring solution from ctrl by moving one multipath away from the maxset
-	maxset = max(range(sigma), key=lambda x: ctrlLinkCnt[x])
-	# Pick a random multipath from the maxset and compute the cost if moved to another controller
-	m = random.choice(range(len(ctrl[maxset])))
-	newlinks = [CountNewLinks(ctrl[maxset][m], ctrl[i]) for i in range(sigma)]
-	newlinks[maxset] = float('inf')
-	# The one with least new link is the candidate (minset)
-	minset = min(range(sigma), key=lambda x: newlinks[x])
-	ctrlTemp = copy.deepcopy(ctrl)
-	ctrlTemp[minset].append(ctrlTemp[maxset][m])
-	ctrlTemp[maxset] = [ctrlTemp[maxset][i] for i in range(len(ctrlTemp[maxset])) if i != m]
-	ctrlTempLinkCnt = [len(list(set([link for mpath in ctrlTemp[i] for path in mpath for link in path]))) for i in range(sigma)]
-	# Move definitely if it yields a better solution, otherwise move with a probability
-	delta = max(ctrlTempLinkCnt) - max(ctrlLinkCnt)
-	if delta < 0 or random.random() < math.exp(-delta/thermo):
-		ctrl = ctrlTemp
-		ctrlLinkCnt = ctrlTempLinkCnt
-	# Update best if necessary
-	if max(ctrlTempLinkCnt) < max(ctrlLinkCntBest):
-		ctrlBest = copy.deepcopy(ctrl)
-		ctrlLinkCntBest = ctrlLinkCnt[:]
-	# Update temperature
-	thermo -= 0.01
-satime = time.clock() - sastart
-
-###########################################################
-# Part 8:
-#   Print refined configuration
-for i in range(sigma):
-	print "Sim Ann Controller %d:" % (i)
-	#print "\n".join(["  "+"".join(["%4d" % (link) for link in path]) for mpath in ctrlCopy[i] for path in mpath])
-	print "".join(["%3d" % (k) for k in sorted(list(set([link for mpath in ctrlBest[i] for path in mpath for link in path])))])
-	print "Totally %d links" % (ctrlLinkCntBest[i])
-print "Sim ann link count vector (%s)" % (",".join([str(i) for i in ctrlLinkCntBest]))
-print "Time elapsed: %f" % (satime)
