@@ -48,6 +48,8 @@ def ReadInput(f1, f2):
 	nodeDic = {}
 	nodes = []
 	links = []
+	length = []
+	capacity = []
 	for line in topoFile:
 		token = line.split()
 		if (len(token) < 2): continue
@@ -57,7 +59,12 @@ def ReadInput(f1, f2):
 		elif token[0] == "l":	# specifying a link as a connection between two nodes
 			e = (nodeDic[token[1]], nodeDic[token[2]])
 			links.append(e)
-			if not digraph: links.append((e[1],e[0]))
+			length.append(1 if len(token) < 4 else token[3])
+			capacity.append(1 if len(token) < 5 else token[4])
+			if not digraph:
+				links.append((e[1],e[0]))
+				length.append(length[-1])
+				capacity.append(capacity[-1])
 	topoFile.close()
 
 	print "Reading input file %s" % f2
@@ -68,7 +75,7 @@ def ReadInput(f1, f2):
 		if (len(token) < 3): continue
 		traffic[nodeDic[token[0]], nodeDic[token[1]]] = float(token[2])
 	trafficFile.close()
-	return nodes, links, traffic
+	return nodes, links, length, capacity, traffic
 
 def BellmanFord(t):
 	"""
@@ -78,11 +85,11 @@ def BellmanFord(t):
 	d = [float('inf') for i in nodes]	# Shortest distance to t
 	n = [-1 for i in nodes]			# Next hop toward t
 	d[t] = 0
-	for i in range(len(nodes)-1):
-		changed = False
-		for (u,v) in links:
-			if d[u] > d[v] + 1:
-				d[u] = d[v] + 1
+	for i in xrange(len(nodes)-1):
+		for j in xrange(len(links)):
+			(u,v) = links[j]
+			if d[u] > d[v] + length[j]:
+				d[u] = d[v] + length[j] 
 				n[u] = v
 	return n,d
 
@@ -109,8 +116,8 @@ def FindKPaths(s,t):
 	tree, dist = BellmanFord(t)
 	intree = [e for e in range(len(links)) if tree[links[e][0]]==links[e][1]]
 	sidetrk = [e for e in range(len(links)) if e not in intree and tree[links[e][1]]!=links[e][0]]
-	delta = dict([e,1+dist[links[e][1]]-dist[links[e][0]]] for e in range(len(links)))
-	deltaSorted = [(e,delta[k]) for e in delta.keys()].sort(lambda x,y: cmp(x[1],y[1]))
+	delta = dict([e,length[e]+dist[links[e][1]]-dist[links[e][0]]] for e in range(len(links)))
+	deltaSorted = [(e,delta[e]) for e in delta.keys()].sort(lambda x,y: cmp(x[1],y[1]))
 	paths = []
 	leaves = []
 
@@ -129,13 +136,23 @@ def FindKPaths(s,t):
 			# verify if this is a loop-free path
 			if links[edge][0] in sidenode:
 				# the sidetrack edge in consideration is paralleled with another sidetrack edge
-				break
+				continue
+			# avoid duplicated set of sidetrack edges: sort them in order
+			currentside = leafside[:]
+			currentside.append(edge)
+			currentside.sort()
+			duplicated = False
+			for d, sides in paths:
+				if sides == currentside:
+					duplicated = True
+					break
+			if duplicated: continue
 			visited = set()	# visited nodes
 			hasLoop = False
 			edgeUsed = False
 			current = s
 			while current != t:
-				visited.add(current);
+				visited.add(current)
 				if current == links[edge][0]:
 					current = links[edge][1]
 					edgeUsed = True
@@ -147,10 +164,9 @@ def FindKPaths(s,t):
 				if current in visited:
 					hasLoop = True
 					break
-			if not hasLoop and edgeUsed:
+			if (not hasLoop) and edgeUsed and sidenode < visited:
 				# new loop-free path is found, add to repositories
-				newpath = (leafdist+delta[edge], leafside[:])
-				newpath[1].append(edge)
+				newpath = (leafdist+delta[edge], currentside)
 				heapq.heappush(paths, newpath)
 				heapq.heappush(leaves, newpath)
 		# for safe: if we exhausted all the paths
@@ -172,30 +188,29 @@ def FindKPaths(s,t):
 				current = tree[current]
 				pathlinks.append(ee[0])
 		pathcost.append((ComputeCost(pathlinks), pathlinks))
-	indices = range(len(paths))
-	random.shuffle(indices)
 	sortedcost = sorted(i[0] for i in pathcost)
 	selectedPath = []
-	assert(k <= len(paths))
-	while len(selectedPath) < k:
+	while len(selectedPath) < k and len(sortedcost) > 0:
+		mincost = sortedcost[0]
+		indices = [i for i in range(len(paths)) if pathcost[i][0] == mincost]
+		minlen = min(paths[i][0] for i in indices)
+		indices = [i for i in indices if paths[i][0] == minlen]
 		for i in indices:
-			if sortedcost[0] == pathcost[i][0]:
-				selectedPath.append(pathcost[i][1])
-				sortedcost = sortedcost[1:]
-				indices.remove(i)
-				break
-	print "Paths selected for %d -> %d:" % (s,t)
+			selectedPath.append(pathcost[i][1])
+			sortedcost = sortedcost[1:]
+			if len(selectedPath) == k: break
+	print "Paths selected for %s -> %s:" % (nodes[s],nodes[t])
 	for p in selectedPath:
-		pathnode = [links[p[0]][0]]
+		pathnode = [nodes[links[p[0]][0]]]
 		for l in p:
-			pathnode.append(links[l][1])
+			pathnode.append(nodes[links[l][1]])
 		print pathnode
 	return selectedPath
 
 ###########################################################
 # Step 1:
 #   Read in data
-nodes, links, traffic = ReadInput(topofile, matrixfile)
+nodes, links, length, capacity, traffic = ReadInput(topofile, matrixfile)
 
 ###########################################################
 # Step 2:
@@ -210,7 +225,7 @@ for pair in pairs:
 	paths = FindKPaths(pair[0], pair[1])
 	# For each link in the path, increase the load by rho/k
 	for l in [ll for p in paths for ll in p]:
-		linkload[l] += traffic[pair]/k
+		linkload[l] += traffic[pair]/len(paths)
 	# Keep the paths
 	allpaths.extend(paths)
 
@@ -220,6 +235,6 @@ for pair in pairs:
 print "All the paths:"
 print "\n".join(str([links[j] for j in i]) for i in allpaths)
 print "Link loads"
-print "\n".join([str([links[i],linkload[i]]) for i in range(len(linkload))])
+print "\n".join([str(["(%s,%s)" % (nodes[links[i][0]], nodes[links[i][1]]),linkload[i]]) for i in range(len(linkload))])
 
 sys.exit(1)
