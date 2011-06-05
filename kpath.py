@@ -97,6 +97,35 @@ def ComputeCost(pathlinks):
 	c = sum(linkload[l] for l in pathlinks)
 	return c
 
+def Sidetrack2Path(tree, sidetracks, s, t):
+	"""
+	Given a shortest-path tree toward destination t, and a set of
+	sidetracked edges, deduce the path from s to t.
+	It assumes the sidetracked edges are valid, i.e. no two sidetracked
+	edges are parallel to each other.
+	"""
+	visited = set()		# visited nodes
+	path = []		# set of edges
+	sidenodes = set(links[e][0] for e in sidetracks)	# nodes that needs to be sidetracked
+	current = s
+	while current != t:
+		# Loop detection
+		if current in visited:
+			return []
+		else:
+			visited.add(current)
+		# No loop is found yet, proceed one hop
+		if current in sidenodes:
+			edge = [e for e in sidetracks if links[e][0] == current]
+			current = links[edge[0]][1]
+			path.append(edge[0])
+		else:
+			edge = [e for e in range(len(links)) if links[e] == (current,tree[current])]
+			current = links[edge[0]][1]
+			path.append(edge[0])
+	# Destination reached. Return the path
+	return path
+
 def FindKPaths(s,t):
 	"""
 	Find k paths joining nodes s and t. The topology is stored in array
@@ -133,40 +162,19 @@ def FindKPaths(s,t):
 		leafdist, leafside = heapq.heappop(leaves)
 		sidenode = set(links[e][0] for e in leafside)	# nodes that needs to be sidetracked
 		for edge in sidetrk:
-			# verify if this is a loop-free path
-			if links[edge][0] in sidenode:
-				# the sidetrack edge in consideration is paralleled with another sidetrack edge
-				continue
+			# verify if the sidetracked edge is paralleled with another
+			if links[edge][0] in sidenode: continue
 			# avoid duplicated set of sidetrack edges: sort them in order
 			currentside = leafside[:]
 			currentside.append(edge)
 			currentside.sort()
-			duplicated = False
-			for d, sides in paths:
-				if sides == currentside:
-					duplicated = True
-					break
-			if duplicated: continue
-			visited = set()	# visited nodes
-			hasLoop = False
-			edgeUsed = False
-			current = s
-			while current != t:
-				visited.add(current)
-				if current == links[edge][0]:
-					current = links[edge][1]
-					edgeUsed = True
-				elif current in sidenode:
-					ee = [e for e in leafside if links[e][0]==current]
-					current = links[ee[0]][1]
-				else:
-					current = tree[current]
-				if current in visited:
-					hasLoop = True
-					break
-			if (not hasLoop) and edgeUsed and sidenode < visited:
-				# new loop-free path is found, add to repositories
-				newpath = (leafdist+delta[edge], currentside)
+			if [sides for d, sides in paths if sides == currentside]: continue
+			# Find the path
+			currentpath = Sidetrack2Path(tree, currentside, s, t)
+			# Add the path to repository if it is loop-free and contains the new sidetracked edge
+			visited = set(links[e][0] for e in currentpath)
+			if edge in currentpath and sidenode < visited:
+				newpath = (leafdist + delta[edge], currentside)
 				heapq.heappush(paths, newpath)
 				heapq.heappush(leaves, newpath)
 		# for safe: if we exhausted all the paths
@@ -175,18 +183,7 @@ def FindKPaths(s,t):
 	# Amongst the 10*k paths, find the best k
 	pathcost = []
 	for p in paths:
-		pathlinks = []
-		current = s
-		sidenode = set(links[e][0] for e in p[1])
-		while current != t:
-			if current in sidenode:
-				ee = [e for e in p[1] if links[e][0]==current]
-				current = links[ee[0]][1]
-				pathlinks.append(ee[0])
-			else:
-				ee = [e for e in range(len(links)) if links[e]==(current, tree[current])]
-				current = tree[current]
-				pathlinks.append(ee[0])
+		pathlinks = Sidetrack2Path(tree, p[1], s, t)
 		pathcost.append((ComputeCost(pathlinks), pathlinks))
 	sortedcost = sorted(i[0] for i in pathcost)
 	selectedPath = []
@@ -195,6 +192,7 @@ def FindKPaths(s,t):
 		indices = [i for i in range(len(paths)) if pathcost[i][0] == mincost]
 		minlen = min(paths[i][0] for i in indices)
 		indices = [i for i in indices if paths[i][0] == minlen]
+		random.shuffle(indices)
 		for i in indices:
 			selectedPath.append(pathcost[i][1])
 			sortedcost = sortedcost[1:]

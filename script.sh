@@ -1,7 +1,7 @@
 #!/bin/bash
 
 for TOPOFILE in *topo ; do
-	TOPO=`basename $TOPOFILE .topo`
+	TOPO=${TOPOFILE%.topo}
 	./kpath.py -t $TOPO.topo -m $TOPO.full.traffic > $TOPO.all.full.kpath
 	./kpath.py -t $TOPO.topo -m $TOPO.rand.traffic > $TOPO.all.rand.kpath
 	./ecmp.py -t $TOPO.topo -m $TOPO.full.traffic > $TOPO.all.full.ecmp
