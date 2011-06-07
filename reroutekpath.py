@@ -18,16 +18,19 @@ import getopt,sys,random,heapq
 # Global parameters
 topofile = 'topology.txt'	# default topology file
 matrixfile = 'matrix.txt'	# default matrix file
+flowfile = 'flow.txt'		# default flow specification file
 k = 4				# default number of paths to find for a pair
 shortest = False		# use only shortest path
 digraph = False			# topology specification is a digraph
 
-optlist, userlist = getopt.getopt(sys.argv[1:], 't:m:k:ds')
+optlist, userlist = getopt.getopt(sys.argv[1:], 't:m:f:k:ds')
 for opt, optarg in optlist:
 	if opt == '-t':
 		topofile = optarg
 	elif opt == '-m':
 		matrixfile = optarg
+	elif opt == '-f':
+		flowfile = optarg
 	elif opt == '-k':
 		k = int(optarg)
 	elif opt == '-d':
@@ -40,11 +43,19 @@ for opt, optarg in optlist:
 
 ###########################################################
 # Helper functions
-def ReadInput(f1, f2):
+def ReadInput(f1, f2, f3):
 	"""
-	Read in a Rocketfuel format topology file, then a traffic matrix file.
-	At this moment, we assume all link distances are 1 and capacities are 1
-	as well. Changes can be made but it is not in the Rocketfuel file.
+	Read in a Rocketfuel format topology file, and then the traffic matrix,
+	then the flow specification.
+	We assumed the link specification contains at least the two endpoints
+	refered by the name of nodes. Optionally, the 3rd and 4th argument in
+	the link specification are the length and capacity respectively. This
+	optional part is not in the Rocketfuel file.
+	The flow specification is in the following format:
+		<source> <destination> <load> <begin> <end>
+	To mean the flow from source to destination begins and ends at certain
+	time (number of seconds since start) and it is of the size of certain
+	load. The flow can only be routed in one path, no spliting allowed.
 	"""
 	print "Reading input file %s" % f1
 	topoFile = open(f1, "r")	# Topology file
@@ -78,7 +89,22 @@ def ReadInput(f1, f2):
 		if (len(token) < 3): continue
 		traffic[nodeDic[token[0]], nodeDic[token[1]]] = float(token[2])
 	trafficFile.close()
-	return nodes, links, length, capacity, traffic
+
+	print "Reading input file %s" % f3
+	flowFile = open(f3, "r")	# Flow history file
+	flows = []
+	events = []
+	for line in flowFile:
+		token = line.split()
+		if (len(token) < 5): continue
+		begin = float(token[3])
+		end = float(token[4])
+		heapq.heappush(events, (begin, len(flows), True))
+		heapq.heappush(events, (end, len(flows), False))
+		spec = (nodeDic[token[0]], nodeDic[token[1]], float(token[2]), begin, end)
+		flows.append(spec)
+	flowFile.close()
+	return nodes, links, length, capacity, traffic, flows, events
 
 def BellmanFord(t):
 	"""
@@ -214,7 +240,7 @@ def FindKPaths(s,t):
 ###########################################################
 # Step 1:
 #   Read in data
-nodes, links, length, capacity, traffic = ReadInput(topofile, matrixfile)
+nodes, links, length, capacity, traffic, flows, events = ReadInput(topofile, matrixfile, flowfile)
 
 ###########################################################
 # Step 2:
@@ -238,7 +264,33 @@ for pair in pairs:
 #   Output result to console
 print "All the paths:"
 print "\n".join(str([links[j] for j in i]) for i in allpaths)
-print "Link loads"
-print "\n".join([str(["(%s,%s)" % (nodes[links[i][0]], nodes[links[i][1]]),linkload[i]]) for i in range(len(linkload))])
+
+###########################################################
+# Step 4:
+#   Exhaust the event list to establish/remove a flow on the network
+
+clock = 0.0
+linkload = [0 for l in links]
+flowpaths = {}	# Dictionary for flow:->set of links mapping
+while events:
+	time, id, arrival = heapq.heappop(events)
+	if arrival:
+		# Find a path for this flow
+		pp = [p for p in allpaths if links[p[0]][0] == flows[id][0] and links[p[-1]][1] == flows[id][1]]
+		path = random.choice(pp)
+		# Remember the path, raise load
+		flowpaths[id] = path
+		clock = time
+		for l in path:
+			linkload[l] += flows[id][2]
+			print "%f\t%d\t%f" % (clock, l, linkload[l])
+	else:
+		# Retrieve the path for this flow
+		path = flowpaths.pop(id)
+		clock = time
+		# For each link in the path, decrease the load
+		for l in path:
+			linkload[l] -= flows[id][2]
+			print "%f\t%d\t%f" % (clock, l, linkload[l])
 
 sys.exit(1)
