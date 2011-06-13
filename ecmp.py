@@ -81,8 +81,7 @@ def BellmanFord(t):
 	n = [-1 for i in nodes]			# Next hop toward t
 	d[t] = 0
 	for i in xrange(len(nodes)-1):
-		for j in xrange(len(links)):
-			(u,v) = links[j]
+		for j,(u,v) in enumerate(links):
 			if d[u] > d[v] + length[j]:
 				d[u] = d[v] + length[j] 
 				n[u] = v
@@ -131,7 +130,7 @@ for pair in pairs:
 # Step 3:
 #   Output result to console
 print "Link loads"
-print "\n".join([str(["(%s,%s)" % (nodes[links[i][0]], nodes[links[i][1]]),linkload[i]]) for i in range(len(linkload))])
+print "\n".join([str(["(%s,%s)" % (nodes[e[0]], nodes[e[1]]),linkload[i]]) for i,e in enumerate(links)])
 
 sys.exit(1)
 

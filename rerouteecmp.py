@@ -112,8 +112,7 @@ def BellmanFord(t):
 	n = [-1 for i in nodes]			# Next hop toward t
 	d[t] = 0
 	for i in xrange(len(nodes)-1):
-		for j in xrange(len(links)):
-			(u,v) = links[j]
+		for j,(u,v) in enumerate(links):
 			if d[u] > d[v] + length[j]:
 				d[u] = d[v] + length[j] 
 				n[u] = v
@@ -144,7 +143,7 @@ while events:
 			mindist = min(dist[i] for i in neighbour)
 			minneighbour = [i for i in neighbour if dist[i] == mindist]
 			nextnode = random.choice(minneighbour)
-			linkid = [e for e in range(len(links)) if links[e] == (currentnode, nextnode)]
+			linkid = [i for i,e in enumerate(links) if e == (currentnode, nextnode)]
 			path.append(linkid[0])
 			linkload[linkid[0]] += flows[id][2]
 			print "%f\t%d\t%f" % (clock, linkid[0], linkload[linkid[0]])

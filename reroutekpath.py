@@ -115,8 +115,7 @@ def BellmanFord(t):
 	n = [-1 for i in nodes]			# Next hop toward t
 	d[t] = 0
 	for i in xrange(len(nodes)-1):
-		for j in xrange(len(links)):
-			(u,v) = links[j]
+		for j,(u,v) in enumerate(links):
 			if d[u] > d[v] + length[j]:
 				d[u] = d[v] + length[j] 
 				n[u] = v
@@ -149,7 +148,7 @@ def Sidetrack2Path(tree, sidetracks, s, t):
 			current = links[edge[0]][1]
 			path.append(edge[0])
 		else:
-			edge = [e for e in range(len(links)) if links[e] == (current,tree[current])]
+			edge = [i for i,e in enumerate(links) if e == (current,tree[current])]
 			current = links[edge[0]][1]
 			path.append(edge[0])
 	# Destination reached. Return the path
@@ -172,9 +171,9 @@ def FindKPaths(s,t):
 	#    paths = array to store the paths joining s to t, manipulated with heapq
 	#    leaves = the leave nodes of the heap `paths'
 	tree, dist = BellmanFord(t)
-	intree = [e for e in range(len(links)) if tree[links[e][0]]==links[e][1]]
-	sidetrk = [e for e in range(len(links)) if e not in intree and tree[links[e][1]]!=links[e][0]]
-	delta = dict([e,length[e]+dist[links[e][1]]-dist[links[e][0]]] for e in range(len(links)))
+	intree = [i for i,e in enumerate(links) if tree[e[0]] == e[1]]
+	sidetrk = [i for i,e in enumerate(links) if i not in intree and tree[e[1]] != e[0]]
+	delta = dict([i,length[i]+dist[e[1]]-dist[e[0]]] for i,e in enumerate(links))
 	deltaSorted = [(e,delta[e]) for e in delta.keys()].sort(lambda x,y: cmp(x[1],y[1]))
 	paths = []
 	leaves = []
