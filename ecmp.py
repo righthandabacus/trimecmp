@@ -80,7 +80,7 @@ def BellmanFord(t):
 	d = [float('inf') for i in nodes]	# Shortest distance to t
 	n = [-1 for i in nodes]			# Next hop toward t
 	d[t] = 0
-	for i in xrange(len(nodes)-1):
+	for i in range(len(nodes)-1):
 		for j,(u,v) in enumerate(links):
 			if d[u] > d[v] + length[j]:
 				d[u] = d[v] + length[j] 
