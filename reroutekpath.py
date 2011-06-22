@@ -107,7 +107,7 @@ def ReadInput(f1, f2, f3):
 	flowFile.close()
 	return nodes, links, length, capacity, traffic, flows, events
 
-BellmanFordMemoize = list(range(len(nodes)))
+BellmanFordMemoize = dict()
 def BellmanFord(t):
 	"""
 	Caching function for _BellmanFord(): The distance to destination t is
@@ -115,7 +115,7 @@ def BellmanFord(t):
 	_BellmanFord(t).
 	"""
 	try:
-		n,d = BellmanFordMemoize(t)
+		n,d = BellmanFordMemoize[t]
 	except KeyError:
 		n,d = _BellmanFord(t)
 	return n,d
