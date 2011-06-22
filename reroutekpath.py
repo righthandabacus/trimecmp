@@ -99,7 +99,7 @@ def ReadInput(f1, f2, f3):
 		if (len(token) < 5): continue
 		begin = float(token[3])
 		end = float(token[4])
-		if end == begin: continue	# Skip the cases that arrival = departure
+		if end == begin: continue	# Skip this malformed flow
 		heapq.heappush(events, (begin, len(flows), True))
 		heapq.heappush(events, (end, len(flows), False))
 		spec = (nodeDic[token[0]], nodeDic[token[1]], float(token[2]), begin, end)
@@ -107,7 +107,20 @@ def ReadInput(f1, f2, f3):
 	flowFile.close()
 	return nodes, links, length, capacity, traffic, flows, events
 
+BellmanFordMemoize = list(range(len(nodes)))
 def BellmanFord(t):
+	"""
+	Caching function for _BellmanFord(): The distance to destination t is
+	returned from cache BellmanFordMemoize. If not in cache, call
+	_BellmanFord(t).
+	"""
+	try:
+		n,d = BellmanFordMemoize(t)
+	except KeyError:
+		n,d = _BellmanFord(t)
+	return n,d
+
+def _BellmanFord(t):
 	"""
 	Use Bellman-Ford to deduce the shortest path tree of any node to t
 	"""
@@ -258,6 +271,7 @@ for pair in pairs:
 		linkload[l] += traffic[pair]/len(paths)
 	# Keep the paths
 	allpaths.extend(paths)
+del BellmanFordMemoize		# Free up memory
 
 ###########################################################
 # Step 3:

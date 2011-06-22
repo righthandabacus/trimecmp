@@ -1,0 +1,13 @@
+\.rr[a-z]*$
+\.flow$
+\.traffic$
+\.eps$
+\.png$
+\.topo$
+\.kpath$
+\.flows$
+\.ecmp$
+\.sorted$
+\.graffle$
+^\.DS_Store$
+
