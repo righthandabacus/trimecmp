@@ -72,7 +72,20 @@ def ReadInput(f1, f2):
 	trafficFile.close()
 	return nodes, links, length, capacity, traffic
 
+BellmanFordMemoize = dict()
 def BellmanFord(t):
+	"""
+	Caching function for _BellmanFord(): The distance to destination t is
+	returned from cache BellmanFordMemoize. If not in cache, call
+	_BellmanFord(t).
+	"""
+	try:
+		n,d = BellmanFordMemoize[t]
+	except KeyError:
+		n,d = _BellmanFord(t)
+	return n,d
+
+def _BellmanFord(t):
 	"""
 	Use Bellman-Ford to deduce the shortest path tree of any node to t
 	"""

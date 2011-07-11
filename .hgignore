@@ -10,4 +10,7 @@
 \.sorted$
 \.graffle$
 ^\.DS_Store$
-
+^figure
+\.pdf$
+\.txt$
+^_.*$

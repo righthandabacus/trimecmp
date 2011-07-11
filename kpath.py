@@ -21,19 +21,25 @@ matrixfile = 'matrix.txt'	# default matrix file
 k = 4				# default number of paths to find for a pair
 shortest = False		# use only shortest path
 digraph = False			# topology specification is a digraph
+overshoot = 25.0		# percentage of length overshoot (w.r.t. shortest path) tolerated, effective only if shortest==False
 
-optlist, userlist = getopt.getopt(sys.argv[1:], 't:m:k:ds')
+random.seed(1)
+optlist, userlist = getopt.getopt(sys.argv[1:], 't:m:k:dso:')
 for opt, optarg in optlist:
 	if opt == '-t':
 		topofile = optarg
 	elif opt == '-m':
 		matrixfile = optarg
 	elif opt == '-k':
-		k = int(optarg)
+		n = int(optarg)
+		if n > 0: k = n
 	elif opt == '-d':
 		digraph = True
 	elif opt == '-s':
 		shortest = True
+	elif opt == '-o':
+		n = float(optarg)
+		if n > 0: overshoot = n
 	else:
 		# getopt will fault for other options
 		sys.exit(1)
@@ -80,7 +86,20 @@ def ReadInput(f1, f2):
 	trafficFile.close()
 	return nodes, links, length, capacity, traffic
 
+BellmanFordMemoize = dict()
 def BellmanFord(t):
+	"""
+	Caching function for _BellmanFord(): The distance to destination t is
+	returned from cache BellmanFordMemoize. If not in cache, call
+	_BellmanFord(t).
+	"""
+	try:
+		n,d = BellmanFordMemoize[t]
+	except KeyError:
+		n,d = _BellmanFord(t)
+	return n,d
+
+def _BellmanFord(t):
 	"""
 	Use Bellman-Ford to deduce the shortest path tree of any node to t
 	"""
@@ -141,14 +160,12 @@ def FindKPaths(s,t):
 	#    intree = links (w.r.t. `links') that is in the shortest path tree
 	#    sidetrk = links (w.r.t. `links') that can be a sidetrack
 	#    delta = the "delta value" of every link (w.r.t. `links')
-	#    deltaSorted = list version of `delta' sorted in ascending delta value
 	#    paths = array to store the paths joining s to t, manipulated with heapq
 	#    leaves = the leave nodes of the heap `paths'
 	tree, dist = BellmanFord(t)
 	intree = [i for i,e in enumerate(links) if tree[e[0]] == e[1]]
 	sidetrk = [i for i,e in enumerate(links) if i not in intree and tree[e[1]] != e[0]]
 	delta = dict([i,length[i]+dist[e[1]]-dist[e[0]]] for i,e in enumerate(links))
-	deltaSorted = [(e,delta[e]) for e in delta.keys()].sort(lambda x,y: cmp(x[1],y[1]))
 	paths = []
 	leaves = []
 
@@ -169,9 +186,11 @@ def FindKPaths(s,t):
 		for edge in sidetrk:
 			# verify if the sidetracked edge is paralleled with another
 			if links[edge][0] in sidenode: continue
-			# avoid duplicated set of sidetrack edges: sort them in order
+			# avoid too lengthy paths w.r.t. the shortest path
 			currentside = leafside[:]
 			currentside.append(edge)
+			if sum(delta[i] for i in currentside) > dist[s]*(overshoot/100.0): continue
+			# avoid duplicated set of sidetrack edges: sort them in order
 			currentside.sort()
 			if [sides for d, sides in paths if sides == currentside]: continue
 			# Find the path
@@ -182,7 +201,7 @@ def FindKPaths(s,t):
 				newpath = (leafdist + delta[edge], currentside)
 				heapq.heappush(paths, newpath)
 				heapq.heappush(leaves, newpath)
-		# for safe: if we exhausted all the paths
+		# quit if we exhausted all the paths to avoid poping an empty heap
 		if len(leaves)==0: break
 
 	# Amongst the 10*k paths, find the best k
