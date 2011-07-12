@@ -22,6 +22,7 @@ k = 4				# default number of paths to find for a pair
 shortest = False		# use only shortest path
 digraph = False			# topology specification is a digraph
 overshoot = 25.0		# percentage of length overshoot (w.r.t. shortest path) tolerated, effective only if shortest==False
+maxpaths = 100			# maximum number of paths to return from the FindPaths function
 
 random.seed(1)
 optlist, userlist = getopt.getopt(sys.argv[1:], 't:m:k:dso:')
@@ -55,10 +56,10 @@ def ReadInput(f1, f2):
 	print "Reading input file %s" % f1
 	topoFile = open(f1, "r")	# Topology file
 	nodeDic = {}
-	nodes = []
-	links = []
-	length = []
-	capacity = []
+	nodes = []	# names of nodes
+	links = []	# links as an ordered pair of node IDs
+	length = []	# lengths of links
+	capacity = []	# link capacities
 	for line in topoFile:
 		token = line.split()
 		if (len(token) < 2): continue
@@ -175,8 +176,9 @@ def FindKPaths(s,t):
 	# In case we limit our search to only shortest path, use only delta=0 sidetracks
 	if shortest:
 		sidetrk = [e for e in sidetrk if delta[e]==0]
-	# Find 10*k number of paths
-	while len(paths) < 10*k:
+	# Find a large number of paths
+	random.shuffle(sidetrk)
+	while True:
 		# In this while-loop, a leaf node from the heap `paths' are
 		# retrieved and a sidetrack edge is added to it to form a new
 		# path. Once a new path is found, add to the heap as a new
@@ -201,33 +203,15 @@ def FindKPaths(s,t):
 				newpath = (leafdist + delta[edge], currentside)
 				heapq.heappush(paths, newpath)
 				heapq.heappush(leaves, newpath)
-		# quit if we exhausted all the paths to avoid poping an empty heap
-		if len(leaves)==0: break
-
-	# Amongst the 10*k paths, find the best k
-	pathcost = []
+		# quit if we exhausted all the paths (to avoid poping an empty heap)
+		# or if we enumerated too many paths
+		if len(leaves)==0 or len(paths) >= maxpaths: break
+	# convert paths from sidetrack-based notation to edge-based notation
+	edgepaths = []
 	for p in paths:
-		pathlinks = Sidetrack2Path(tree, p[1], s, t)
-		pathcost.append((ComputeCost(pathlinks), pathlinks))
-	sortedcost = sorted(i[0] for i in pathcost)
-	selectedPath = []
-	while len(selectedPath) < k and len(sortedcost) > 0:
-		mincost = sortedcost[0]
-		indices = [i for i in range(len(paths)) if pathcost[i][0] == mincost]
-		minlen = min(paths[i][0] for i in indices)
-		indices = [i for i in indices if paths[i][0] == minlen]
-		random.shuffle(indices)
-		for i in indices:
-			selectedPath.append(pathcost[i][1])
-			sortedcost = sortedcost[1:]
-			if len(selectedPath) == k: break
-	print "Paths selected for %s -> %s:" % (nodes[s],nodes[t])
-	for p in selectedPath:
-		pathnode = [nodes[links[p[0]][0]]]
-		for l in p:
-			pathnode.append(nodes[links[l][1]])
-		print pathnode
-	return selectedPath
+		edgepaths.append( Sidetrack2Path(tree, p[1], s, t) )
+	# return
+	return edgepaths
 
 ###########################################################
 # Step 1:
@@ -240,22 +224,67 @@ nodes, links, length, capacity, traffic = ReadInput(topofile, matrixfile)
 
 linkload = [0 for l in links]
 pairs = traffic.keys()
-random.shuffle(pairs)
-allpaths = []
-for pair in pairs:
-	# Find k paths
-	paths = FindKPaths(pair[0], pair[1])
-	# For each link in the path, increase the load by rho/k
-	for l in [ll for p in paths for ll in p]:
-		linkload[l] += traffic[pair]/len(paths)
-	# Keep the paths
-	allpaths.extend(paths)
+allpaths = dict()
+for i in range(k):
+	random.shuffle(pairs)
+	for pair in pairs:
+		# Find a set of paths
+		try:
+			if len(allpaths[pair]) < i: continue
+		except KeyError:
+			allpaths[pair] = []
+		paths = [p for p in FindKPaths(pair[0], pair[1]) if p not in allpaths[pair]]
+		if len(paths) == 0: continue
+		# Amongst the paths, find the best one:
+		# Find the min cost according to the cost function, then use
+		# path length as the tie-breaker, then randomly choose one
+		pathcosts = [(ComputeCost(path), path) for path in paths]
+		mincost = min(j[0] for j in pathcosts)
+		pathlens = [(sum(length[l] for l in path), path) for cost,path in pathcosts if cost==mincost]
+		minlen = min(j[0] for j in pathlens)
+		pathpool = [j[1] for j in pathlens if j[0] == minlen]
+		bestpath = random.choice(pathpool)
+		# Check if we need one more path for this pair
+		if len(allpaths[pair]) == 0:
+			# unconditionally add the best path and increase load
+			allpaths[pair].append(bestpath)
+			for l in bestpath:
+				linkload[l] += traffic[pair];
+			pathnode = [nodes[links[bestpath[0]][0]]]
+			for l in bestpath:
+				pathnode.append(nodes[links[l][1]])
+			print "(%s,%s) : %s" % (nodes[pair[0]], nodes[pair[1]], " ".join(pathnode))
+		else:
+			# compare load for with vs without the bestpath
+			newload = linkload[:]
+			linkset = set()
+			for l in [ll for p in allpaths[pair] for ll in p]:
+				newload[l] += traffic[pair] * (1.0/(len(allpaths[pair])+1)-1.0/len(allpaths[pair]))
+				linkset.add(l)
+			for l in bestpath:
+				newload[l] += traffic[pair]/(len(allpaths[pair])+1)
+				linkset.add(l)
+			oldmax = max(linkload[l] for l in linkset)
+			newmax = max(newload[l] for l in linkset)
+			if newmax < oldmax:
+				linkload = newload
+				allpaths[pair].append(bestpath)
+				pathnode = [nodes[links[bestpath[0]][0]]]
+				for l in bestpath:
+					pathnode.append(nodes[links[l][1]])
+				print "(%s,%s) : %s" % (nodes[pair[0]], nodes[pair[1]], " ".join(pathnode))
 
 ###########################################################
 # Step 3:
 #   Output result to console
 print "All the paths:"
-print "\n".join(str([links[j] for j in i]) for i in allpaths)
+for (pair,paths) in allpaths.iteritems():
+	print "  (%s,%s): %d path(s)" % (nodes[pair[0]], nodes[pair[1]], len(paths))
+	for p in paths:
+		pathnode = [nodes[links[p[0]][0]]]
+		for l in p:
+			pathnode.append(nodes[links[l][1]])
+		print "    %s" % (" ".join(pathnode))
 print "Link loads"
 print "\n".join([str(["(%s,%s)" % (nodes[e[0]], nodes[e[1]]),linkload[i]]) for i,e in enumerate(links)])
 
