@@ -116,7 +116,7 @@ def _BellmanFord(t):
 	return n,d
 
 def ComputeCost(pathlinks):
-	c = sum(linkload[l] for l in pathlinks)
+	c = max(linkload[l] for l in pathlinks)
 	return c
 
 def Sidetrack2Path(tree, sidetracks, s, t):
@@ -230,7 +230,9 @@ for i in range(k):
 	for pair in pairs:
 		# Find a set of paths
 		try:
-			if len(allpaths[pair]) < i: continue
+			if len(allpaths[pair]) < i:
+				pass
+				#continue
 		except KeyError:
 			allpaths[pair] = []
 		paths = [p for p in FindKPaths(pair[0], pair[1]) if p not in allpaths[pair]]
@@ -266,7 +268,7 @@ for i in range(k):
 				linkset.add(l)
 			oldmax = max(linkload[l] for l in linkset)
 			newmax = max(newload[l] for l in linkset)
-			if newmax < oldmax:
+			if newmax <= oldmax:
 				linkload = newload
 				allpaths[pair].append(bestpath)
 				pathnode = [nodes[links[bestpath[0]][0]]]
