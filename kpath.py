@@ -6,10 +6,10 @@
 # is a floating point number less than one. The link capacity is assume to be
 # one for all links.
 # 
-# The program finds k paths between every pair of nodes mentioned in the
-# traffic matrix, which k is a parameter to this program. The paths are found
-# such that it minimizes the resultant network cost when each of the k paths
-# carries 1/k of the load for the pair of node.
+# The program finds at most k paths between every pair of nodes mentioned in
+# the traffic matrix, which k is a parameter to this program. The paths are
+# found such that it minimizes the resultant network cost when each of the k
+# paths carries 1/k of the load for the pair of node.
 #
 
 import getopt,sys,random,heapq
@@ -18,13 +18,13 @@ import getopt,sys,random,heapq
 # Global parameters
 topofile = 'topology.txt'	# default topology file
 matrixfile = 'matrix.txt'	# default matrix file
-k = 4				# default number of paths to find for a pair
+k = 4				# maximum number of paths to find for a pair
 shortest = False		# use only shortest path
 digraph = False			# topology specification is a digraph
 overshoot = 25.0		# percentage of length overshoot (w.r.t. shortest path) tolerated, effective only if shortest==False
 maxpaths = 100			# maximum number of paths to return from the FindPaths function
 
-random.seed(1)
+#random.seed(1)
 optlist, userlist = getopt.getopt(sys.argv[1:], 't:m:k:dso:')
 for opt, optarg in optlist:
 	if opt == '-t':
@@ -279,7 +279,7 @@ for i in range(k):
 #   Output result to console
 print "All the paths:"
 for (pair,paths) in allpaths.iteritems():
-	print "  (%s,%s): %d path(s)" % (nodes[pair[0]], nodes[pair[1]], len(paths))
+	print "  (%s,%s) has %d path(s)" % (nodes[pair[0]], nodes[pair[1]], len(paths))
 	for p in paths:
 		pathnode = [nodes[links[p[0]][0]]]
 		for l in p:

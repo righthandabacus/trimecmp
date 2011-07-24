@@ -225,7 +225,6 @@ def FindKPaths(s,t):
 		pathnode = [nodes[links[p[0]][0]]]
 		for l in p:
 			pathnode.append(nodes[links[l][1]])
-		print pathnode
 		print "(%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
 	return selectedPath
 
