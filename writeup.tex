@@ -228,6 +228,7 @@ paths given the traffic matrix.
 
 \section{The Algorithm}\label{sec:algo}
 
+\subsection{Heuristic algorithm on path selecion}
 As the complexity in solving the multi-commodity flow problem for the optimal
 solution is high, a heuristic algorithm is devised. The heuristic algorithm is
 to find the multipaths individually between a pair of nodes. Since our goal is
@@ -242,12 +243,12 @@ paths. The outline of the algorithm is depicted in Algorithm \ref{alg:1}.
 \KwData{Estimated traffic matrix $\alpha_{st},\;\forall (s,t)\in F$}
 \KwData{Maximum number of paths for a flow $k$}
 Initialize link load account $\lambda_e :=0,\quad\forall e\in E$\;
-\ForEach{$(s,t)\in F$ in random order}{\label{alg:mpathenum1}
+\ForEach{$(s,t)\in F$ in random order}{
   \tcc{Find the candidate paths from $s$ to $t$}
-  $M$ := all valid paths joining $s$ to $t$\;\label{alg:pathfind}
+  $M$ := all valid paths joining $s$ to $t$\;\label{alg:1:selectpath}
   \tcc{Select $k$ paths}
   \For{$i:=1$ to $k$}{
-    $p$ := the path among $M$ with the lowest path cost\;
+    $p$ := the path among $M$ with the lowest path cost\;\label{alg:1:tiebreak}
     $\lambda_e$ increase by $\frac{1}{k}\alpha_{st}$ for all $e\in p$
   }
 }
@@ -258,7 +259,7 @@ assuming that we can minimize the overall maximum link utilization by
 minimizing the path cost in every step. The algorithm takes a traffic matrix as
 the input to provide estimate of the relative size of traffic between different
 pairs of nodes. Whether the traffic matrix can be fulfilled in the network is
-not a concern, but it may have influence on the cost function, for example, a
+not a concern, although it may have influence on the cost function, for example, a
 cost function that models the links as queues will find an unfulfillable
 traffic matrix to yield an infinite cost. The idea of the algorithm is as
 follows: We first initialize link load values $\lambda_e$ to zero. They serve
@@ -275,77 +276,59 @@ lower bound on the performance if adaptive multipath routing is being used. At
 the end of the algorithm, $\lambda_e$ reflects the resulting utilization as the
 multipaths are selected accordingly.
 
-The selection of the best $k$ paths (the inner loop in the algorithm) to
-connect $s$ to $t$ is as follows: If there are no more than $k$ valid paths
-available, all of them are chosen. The valid path is the one without loop, and
-fulfilling other constraints such as path length. More detail on the validity
-are addressed in later paragraphs. In case there are more than $k$ valid paths,
-the best path among all the candidate paths are chosen according to a path cost
-function. This function is to evaluate the resulting utilization if this path
-is used. The evaluation is based on the current link load account $\lambda_e$, the
-links' capacities, and the estimated offered load $\alpha_{st}$ for the flow in
-consideration. Once the best path is found, the corresponding link load is
-increased by $\alpha_{st}/k$ to reflect the fact that this path is going to
-carry $\frac{1}{k}$ of the traffic as we are going to evenly distribute the
-traffic among the $k$ paths selected. This process is repeated for $k$ times to
-select the $k$ best paths from the pool of candidates.
+The candidate paths may subject to certain constraints. Obviously, it is
+reasonable to require these paths to be loop-free. Moreover, we may also limit
+the paths' length to avoid a significant disparity in propagation delay between
+different paths. These limitations are fulfilled in line
+\ref{alg:1:selectpath}. Obviously, if there are no more than $k$ paths
+available, all of them would be chosen to route traffic between this pair of
+nodes. More detail on the candidate path selection process is presented in next
+subsection.
 
-Note that, because the link load account is to reflect the estimated traffic
-amount, there is no upper limit for $\lambda_e$ as long as it is non-negative.
-Therefore, $\lambda_e$ could be greater than the link capacity, as a result of
-traffic demand overloaded the network capacity. The algorithm here does not
-prevent this to happen, but only to optimize for better load balancing.
-
-The path cost function is the core of the heuristic algorithm. It quantizes the
-preference of a path over another. One way to set up such cost function is to
-take the sum of the relative load of all the links. Assume the link capacities
-are denoted by $\mu_e$, the cost function for a path $p$ to carry $1/k$ of the
-traffic from $s$ to $t$ is therefore, 
-
+The cost function is the core of this heuristic algorithm. It quantizes the
+preference of a path over another. Because our objective is to minimize the
+maximum link utilization, we use the following cost function in our paper:
 \begin{align}
-\chi(p) = \sum_{e\in p} \frac{\lambda_e + \alpha_{st}/k}{\mu_e}
-\label{sumfunction}
-\end{align}
-
-The fraction reflects the load on link $e$ when this path is selected and
-carries $\frac{1}{k}$ of the traffic from $s$ to $t$. The summation accounts
-for the end-to-end congestions, so that it prefers a shortest path if
-everythings are equal. Another way to set up a cost function is to take the
-maximum load instead of the summation, so that it is indifferent to the path
-length but avoid to raise the maximum link load on the network.
-
-\begin{align}
-\chi(p) = \max_{e\in p} \frac{\lambda_e + \alpha_{st}/k}{\mu_e}
+\chi(p) = \max_{e\in p} \frac{\lambda_e + \alpha_{st}/k}{\mu_e}.
 \label{maxfunction}
 \end{align}
+This function takes a path $p$ as an argument, and find the maximum link
+utilization amongst all the links on this path. The fraction represents the
+resulting utilization if this path is chosen to carry traffic from $s$ to $t$,
+namely, the total resulting traffic, $\lambda_e+\alpha_{st}/k$ divided by the
+link capacity $\mu_e$.
 
-We could also have the cost function in between of equations \eqref{sumfunction}
-and \eqref{maxfunction}, i.e.
+We also tried different cost functions, such as sum of the utilization instead
+of maximum, so that it can prefer an overall shorter and less congested path,
+or evaluating the cost by a monotonically increasing convex function. However,
+according to our evaluation done in section \ref{sec:eval}, the cost function
+\eqref{maxfunction} gives the best performance in terms of minimizing the
+maximum link utilization.
 
-\begin{align}
-\chi(p) = \sum_{e\in p} f\big(\frac{\lambda_e + \alpha_{st}/k}{\mu_e}\big),
-\label{midfunction}
-\end{align}
-where $f(x)$ is a monotonically increasing convex function, such as $f(x)=x^2$
-or $f(x)=e^x$.
+In line \ref{alg:1:tiebreak}, we use the path length as the tie-breaker if
+there are several paths of the equal lowest cost. When these paths are of equal
+length, we randomly pick one amongst them.
 
-In case the cost function reports equal for several paths, we use the path
-length as the tie-breaker. When the paths are of equal length, we randomly
-choose among them.
+\subsection{Path finding algorithm}
 
-In line \ref{alg:pathfind} of the algorithm, we enumerate the valid paths that
-joins $s$ to $t$. We can use a modified Eppstein's algorithm to do this, as
-follows.
+In line \ref{alg:1:selectpath} of Algorithm \ref{alg:1}, we enumerate the valid
+paths that joins $s$ to $t$. A number of algorithms are available to find not
+only a single shortest path but multiple paths between two nodes, for example,
+\cite{y71,m78}. In our study, we use a modified Eppstein's algorithm \cite{e98}
+for simplicity reasons. Its pseudocode is listed as Algorithm \ref{alg:2}. We
+describe the Eppstein's algorithm as follows.
 
 \begin{algorithm}
-\caption{Path finding algorithm}
+\caption{Path finding algorithm}\label{alg:2}
+\KwData{Network topology $G=(V,E)$}
+\KwData{Length of links $w(e)\quad\forall e\in E$}
 Run Bellman-Ford algorithm to find the shortest path from any node to $t$,
-let $d(v)$ denotes the shortest path distance from $v$ to $t$\;
+let $d(v)$ denotes the shortest path distance found from $v$ to $t$\;
 $T$ := the tree composed of the the shortest paths to $t$\;
 $S$ := the set of links not in $T$, a.k.a. sidetrack links\;
 \ForEach{$e\in S$}{
   \tcc{Assume $e$ is a directed edge joining $u$ to $v$}
-  $c(e)$ := $d(v) - d(u) + w(e)$, where $w(e)$ is the length of link $e$
+  $c(e)$ := $d(v) - d(u) + w(e)$
 }
 Start with an empty priority queue $Q$\;
 $Q$.push($\emptyset$ with priority 0)\;
@@ -367,7 +350,7 @@ such that each arc is pointed to $t$. We can find the shortest path from any
 node $v$ to $t$ by traversing along the arc in this tree. Any loop-free path
 other than the shortest path according to this tree $T$ can be represented by a
 set of \emph{sidetrack} edges. The sidetrack edges are directed edges. They are
-the edges that are traversed in a path but not included in $T$. When a set of
+the edges that are traversed in a path that is not included in $T$. When a set of
 sidetrack edges are given, the path from $s$ to $t$ is constructed as follows:
 We start from node $s$ on the network, and traverse the edges until we reach
 $t$. At every node, the edge to traverse is determined uniquely by first
@@ -381,56 +364,121 @@ sidetrack edges, but not vice versa.
 
 The latter half of the path finding algorithm is crucial to enumerate the paths
 in ascending order of path length. The quantity $c(e)$ represents the penalty
-of using a sidetrack edge $e$ in terms of the length of resulted path, $c(e)
-\ge 0$ guaranteed. Therefore, for a well-formed set of sidetrack edges,
-$\sigma$, the length of the corresponding path $p$ is \[
-\ell(p) = d(s) + \sum_{e\in\sigma} c(e) \]
+of using a sidetrack edge $e$ in terms of the length of resulted path, $c(e)\ge
+0$ guaranteed. Therefore, for a well-formed set of sidetrack edges,
+$\sigma(p)$, the length of the corresponding path $p$ is \[
+\ell(p) = d(s) + \sum_{e\in\sigma(p)} c(e) \]
 where $d(s)$ is the shortest path distance from $s$ to $t$ and the summation is
 the total additional length imposed by traversing the sidetracked edges.
-Therefore, for any set $\sigma'$ that is a superset of $\sigma$, the
+Therefore, for any set $\sigma(p')$ that is a superset of $\sigma(p)$, the
 corresponding path of the former must be no shorter than that of the latter.
 Making use of this property, the while-loop in the above algorithm use a
 priority queue to enumerate the paths in ascending order of lengths. And
 because of this, we can terminate the path-finding algorithm prematurely if we
 impose a constraint on the length of paths to be found. For example, we can
 limit to our search to only shortest paths (i.e. paths of the length equal to
-$d(s)$) by skipping the set of sidetrack edges $\sigma'$ whenever
-$\sum_{e\in\sigma'} c(e) > 0$ is found.
+$d(s)$) by skipping the set of sidetrack edges $\sigma(p)$ whenever
+$\sum_{e\in\sigma(p)} c(e) > 0$ is found. In our evaluations, we set a
+threshold $\theta\ge 0$ to limit the path selection to
+\begin{align*}
+\frac{1}{d(s)}\sum_{e\in\sigma(p)}c(e) \le \theta,
+\end{align*}
+i.e. no path that is longer than the shortest path by a fraction $\theta$ will
+be selected.
 
-\section{Limitations of the Algorithm}
+\subsection{Optimal number of paths}\label{sub:optimalk}
 
-The algoritm to find the $k$ paths for all the source-destination pairs is
-presented in the previous section. The algorithm does not try to find the
-global optimal but instead, it is a heuristic algorithm to approximate the
-solution.
+According to our evaluation in section \ref{sec:eval}, we find that having more
+path diversity does not necessarily decrease the maximum link utilization on
+the network. Indeed, the increase in $k$ (the number of paths in a multipath
+set between a pair of nodes) exhibits the law of diminishing return. Therefore,
+it is interesting to ask, for a particular topology, at least how many paths we
+needed to enjoy the benefits of multipath routing.
 
-Because the heusitic algorithm searches the paths in a greedy manner, there are
+\begin{algorithm}
+\caption{Algorithm to place routes on a network}\label{alg:3}
+\KwData{Network topology $G=(V,E)$}
+\KwData{Source-destination flows $F \subset V^2$}
+\KwData{Estimated traffic matrix $\alpha_{st},\;\forall (s,t)\in F$}
+Initialize link load account $\lambda_e :=0,\quad\forall e\in E$\;
+Initialize multipath $\pi_{st}:=\emptyset\quad\forall (s,t)\in F$\;
+\For{$i:=1$ to $k$}{\label{alg:3:limitk}
+  \ForEach{$(s,t)\in F$ in random order}{
+    \tcc{Find the candidate paths from $s$ to $t$}
+    $M$ := all valid paths joining $s$ to $t$ not in $\pi_{st}$\;
+    \tcc{Select the $i$-th path}
+    $p$ := the path among $M$ with the lowest path cost\;
+    \If{$(\pi_{st}\cup\{p\})$ is better that $\pi_{st}$}{\label{alg:3:optimal}
+      \ForEach{path $q \in \pi_{st}$}{
+        $\lambda_e := \lambda_e - \frac{1}{|\pi_{st}|}\alpha_{st} + \frac{1}{|\pi_{st}|+1}\alpha_{st}\quad\forall e\in q$\;\label{alg:3:newlambda}
+      }
+      $\lambda_e := \lambda_e + \frac{1}{|\pi_{st}|+1}\alpha_{st}\quad\forall e\in p$\;
+      $\pi_{st} := \pi_{st} \cup \{p\}$\;
+    }
+  }
+}
+\end{algorithm}
+
+We slightly modified Algorithm \ref{alg:1} to detect the optimal number of
+paths to be used automatically, as outlined in Algorithm \ref{alg:3}. The idea
+of finding the optimal number of paths is to compare if it is beneficial to
+have one more paths added to the set of multipaths. Since the offered load
+$\alpha_{st}$ between a pair $(s,t)$ is given, if it is distributed to $n$
+paths, then each path will carry $\alpha_{st}/n$. Obviously, each path will
+carry less traffic if $n$ is larger. In other words, the existing links for
+$(s,t)$ will benefit from having more path diversity. However, if the traffic
+is extended to a new path which involves a heavily loaded link, additional
+traffic will make the link even more heavily loaded. In line
+\ref{alg:3:optimal} of Algorithm \ref{alg:3}, we check if extending the
+existing set $\pi_{st}$ of paths for $(s,t)$ to a new path $p$ is worthwhile by
+verifying if the additional path can lower the maximum link load amongst he
+links in concern, i.e.
+\begin{align*}
+\max \{\lambda_e': e\in q, q\in(\pi_{st}\cup\{p\})\} \le \max \{\lambda_e:e\in q, q\in\pi_{st}\},
+\end{align*}
+where the new link load $\lambda_e'$ is computed according to the equation in
+line \ref{alg:3:newlambda}. If this condition holds, we include $p$ into
+$\pi_{st}$ and update the values of $\lambda_e$ correspondingly.
+
+We placed a limit $k$ as the maximum number of paths for a pair of nodes
+$(s,t)$, as in line \ref{alg:3:limitk}. In practice, we found that the number
+of parallel paths is mostly limited by the condition in line
+\ref{alg:3:optimal}.
+
+\subsection{Limitations of the Algorithm}
+
+The algoritms to find the $k$ paths for all the source-destination pairs is
+presented in the previous subsections. The algorithms do not try to find the global
+optimal but instead, they are heuristic algorithms to approximate the solution.
+
+Because the heusitic algorithms search the paths in a greedy manner, there are
 three limitations:
 
 \begin{itemize}
-\item Because the paths for each source-destination pair is computed
-individually, no coordination can be done to strategically use different paths
-for different source-destination pairs to avoid conflicts, which can incur
-congestion.
+\item As the paths for each source-destination pair is computed
+	individually, there is no coordination to strategically use different
+	paths for different source-destination pairs to avoid contention. The
+	algorithms use only the cost function as the means to avoid such
+	contention, which is not guaranteed to success.
 \item The way to find $k$ paths for a particular source-destination pair is to
-find the paths one by one according to the updated path cost. In this way,
-similarly, we cannot coordinate the selection between these $k$ paths.
-\item The algorithm intended to find $k$ paths for a source-destination pair
-whenever it is possible. However, for the objective of minimizing the maximum
-link load, the best solution may not be utilzing all the $k$ paths.
+	find the paths one by one according to the updated path cost. In this
+	way, similarly, we cannot coordinate the selection between these $k$
+	paths.
+\item Particular to Algorithm \ref{alg:1}, it finds $k$ paths for a
+	source-destination pair whenever it is possible. However, for the
+	objective of minimizing the maximum link load, the best solution may
+	not be utilzing all the $k$ paths.
 \end{itemize}
 
-Moreover, the algorithm is based on the assumptions that,
-\begin{itemize}
-\item Any arbitrary loop-free path can be used to forward traffic; and
-\item The traffic demand is known a priori.
-\end{itemize}
-We do not see these as major hurdles. The former can be readily achieved by
-setting up end-to-end paths, such as MPLS LSP. The latter is also a reasonable
-assumption and we can merely estimate the traffic matrix by statistics of
-historical usage data.
+Moreover, the algorithm is based on the assumptions that we can use any
+arbitrary loop-free paths to forward traffic and the traffic demand is known a
+priori. The former assumption can be readily achieved by setting up end-to-end
+paths, such as MPLS LSP. If only hop-by-hop forwarding is allowed, the
+selection of paths (Algorithm \ref{alg:2} would be more restricted. The latter
+assumption is also a reasonable one as we can merely estimate the traffic
+matrix by statistics of historical usage data.
 
-\section{Result}
+\section{Evaluations}\label{sec:eval}
 
 Two sets of evaluations is done on this algorithm, to compare its performance
 against the standard ECMP. The first evaluation is to compare the traffic load
