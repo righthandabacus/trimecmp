@@ -262,7 +262,7 @@ nodes, links, length, capacity, traffic = ReadInput(topofile, matrixfile)
 linkload = [0 for l in links]
 pairs = traffic.keys()
 random.shuffle(pairs)
-allpaths = []
+allpaths = dict()
 for pair in pairs:
 	# Find k paths
 	paths = FindKPaths(pair[0], pair[1])
@@ -270,7 +270,7 @@ for pair in pairs:
 	for l in [ll for p in paths for ll in p]:
 		linkload[l] += traffic[pair]/len(paths)
 	# Keep the paths
-	allpaths.extend(paths)
+	allpaths[pair] = paths
 
 ###########################################################
 # Step 3:
@@ -282,56 +282,56 @@ while improved:
 	# Find the paths that pass through bottleneck links
 	maxload = max(linkload)
 	hotlinks = [l for l in range(len(links)) if linkload[l]==maxload]
-	heavypaths = [p for p in allpaths if set(p) & set(hotlinks)]
+	heavypaths = [p for pair in traffic.keys() for p in allpaths[pair] if set(p) & set(hotlinks)]
 	improved = False
 	for path in heavypaths:
 		s,t = links[path[0]][0], links[path[-1]][1]
-		parallelpaths = [p for p in allpaths if links[p[0]][0]==s and links[p[-1]][1]==t]
 		# Try to find an alternative path to this path
 		tree,paths = Eppstein(s,t)
 		goodpaths = []
 		for p in paths:
 			pathlinks = Sidetrack2Path(tree, p[1], s, t)
 			if set(pathlinks) & set(hotlinks): continue
-			if pathlinks in parallelpaths: continue
+			if pathlinks in allpaths[s,t]: continue
 			headroom = maxload - max(linkload[l] for l in pathlinks)
-			if len(parallelpaths) < k:
-				if headroom <= traffic[s,t]/(len(parallelpaths)+1): continue
+			if len(allpaths[s,t]) < k:
+				if headroom <= traffic[s,t]/(len(allpaths[s,t])+1): continue
 			else:
 				if headroom <= traffic[s,t]/k: continue
 			goodpaths.append(pathlinks)
 		if len(goodpaths)==0: continue
 		# Alternative path available: Update link costs
 		newpath = random.choice(goodpaths)
-		allpaths.append(newpath)
-		if len(parallelpaths) < k:
+		if len(allpaths[s,t]) < k:
 			# add this path as we did not have k paths for this pair yet
 			for l in newpath:
-				linkload[l] += traffic[s,t]/(len(parallelpaths)+1)
-			for l in (ll for p in parallelpaths for ll in p):
-				linkload[l] += traffic[s,t]/(len(parallelpaths)+1) - traffic[s,t]/len(parallelpaths)
+				linkload[l] += traffic[s,t]/(len(allpaths[s,t])+1)
+			for l in (ll for p in allpaths[s,t] for ll in p):
+				linkload[l] += traffic[s,t]/(len(allpaths[s,t])+1) - traffic[s,t]/len(allpaths[s,t])
 			pathnode = [nodes[s]] + [nodes[links[l][1]] for l in newpath]
 			print "Added (%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
 		else:
 			# replace path to keep only k paths for this pair
-			allpaths.remove(path)
 			for l in newpath:
-				linkload[l] += traffic[s,t]/len(parallelpaths)
+				linkload[l] += traffic[s,t]/len(allpaths[s,t])
 			for l in path:
-				linkload[l] -= traffic[s,t]/len(parallelpaths)
+				linkload[l] -= traffic[s,t]/len(allpaths[s,t])
+			allpaths[s,t].remove(path)
 			pathnode = [nodes[s]] + [nodes[links[l][1]] for l in path]
 			print "Removed (%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
 			pathnode = [nodes[s]] + [nodes[links[l][1]] for l in newpath]
 			print "Added (%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
+		allpaths[s,t].append(newpath)
 		improved = True
 
 ###########################################################
 # Step 4:
 #   Output result to console
 print "All the paths:"
-for p in allpaths:
-	pathnode = [nodes[links[p[0]][0]]] + [nodes[links[l][1]] for l in p]
-	print "(%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
+for (pair,paths) in allpaths.iteritems():
+	for p in paths:
+		pathnode = [nodes[links[p[0]][0]]] + [nodes[links[l][1]] for l in p]
+		print "(%s,%s) : %s" % (nodes[pair[0]], nodes[pair[1]], " ".join(pathnode))
 print "Link loads"
 print "\n".join(str(["(%s,%s)" % (nodes[e[0]], nodes[e[1]]),linkload[i]]) for i,e in sorted(enumerate(links),key=lambda x:linkload[x[0]]))
 

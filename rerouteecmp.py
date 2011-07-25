@@ -17,21 +17,15 @@ import getopt,sys,random,heapq
 ###########################################################
 # Global parameters
 topofile = 'topology.txt'	# default topology file
-matrixfile = 'matrix.txt'	# default matrix file
 flowfile = 'flow.txt'		# default flow specification file
-k = 4				# default number of paths to find for a pair
 digraph = False			# topology specification is a digraph
 
-optlist, userlist = getopt.getopt(sys.argv[1:], 't:m:f:k:ds')
+optlist, userlist = getopt.getopt(sys.argv[1:], 't:f:ds')
 for opt, optarg in optlist:
 	if opt == '-t':
 		topofile = optarg
-	elif opt == '-m':
-		matrixfile = optarg
 	elif opt == '-f':
 		flowfile = optarg
-	elif opt == '-k':
-		k = int(optarg)
 	elif opt == '-d':
 		digraph = True
 	else:
@@ -40,7 +34,7 @@ for opt, optarg in optlist:
 
 ###########################################################
 # Helper functions
-def ReadInput(f1, f2, f3):
+def ReadInput(f1, f3):
 	"""
 	Read in a Rocketfuel format topology file, and then the traffic matrix,
 	then the flow specification.
@@ -78,15 +72,6 @@ def ReadInput(f1, f2, f3):
 				capacity.append(capacity[-1])
 	topoFile.close()
 
-	print "Reading input file %s" % f2
-	trafficFile = open(f2, "r")	# Traffic matrix file
-	traffic = {}
-	for line in trafficFile:
-		token = line.split()
-		if (len(token) < 3): continue
-		traffic[nodeDic[token[0]], nodeDic[token[1]]] = float(token[2])
-	trafficFile.close()
-
 	print "Reading input file %s" % f3
 	flowFile = open(f3, "r")	# Flow history file
 	flows = []
@@ -102,22 +87,37 @@ def ReadInput(f1, f2, f3):
 		spec = (nodeDic[token[0]], nodeDic[token[1]], float(token[2]), begin, end)
 		flows.append(spec)
 	flowFile.close()
-	return nodes, links, length, capacity, traffic, flows, events
+	return nodes, links, length, capacity, flows, events
 
-BellmanFordMemoize = dict()
+class memoized(object):
+	""" Copied from http://wiki.python.org/moin/PythonDecoratorLibrary
+	Decorator that caches a function's return value each time it is called.
+	If called later with the same arguments, the cached value is returned, and
+	not re-evaluated.
+	"""
+	def __init__(self, func):
+		self.func = func
+		self.cache = {}
+	def __call__(self, *args):
+		try:
+			return self.cache[args]
+		except KeyError:
+			value = self.func(*args)
+			self.cache[args] = value
+			return value
+		except TypeError:
+			# uncachable -- for instance, passing a list as an argument.
+			# Better to not cache than to blow up entirely.
+			return self.func(*args)
+	def __repr__(self):
+		"""Return the function's docstring."""
+		return self.func.__doc__
+	def __get__(self, obj, objtype):
+		"""Support instance methods."""
+		return functools.partial(self.__call__, obj)
+
+@memoized
 def BellmanFord(t):
-	"""
-	Caching function for _BellmanFord(): The distance to destination t is
-	returned from cache BellmanFordMemoize. If not in cache, call
-	_BellmanFord(t).
-	"""
-	try:
-		n,d = BellmanFordMemoize[t]
-	except KeyError:
-		n,d = _BellmanFord(t)
-	return n,d
-
-def _BellmanFord(t):
 	"""
 	Use Bellman-Ford to deduce the shortest path tree of any node to t
 	"""
@@ -135,7 +135,7 @@ def _BellmanFord(t):
 ###########################################################
 # Step 1:
 #   Read in data
-nodes, links, length, capacity, traffic, flows, events = ReadInput(topofile, matrixfile, flowfile)
+nodes, links, length, capacity, flows, events = ReadInput(topofile, flowfile)
 
 ###########################################################
 # Step 2:
