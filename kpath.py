@@ -298,7 +298,7 @@ while improved:
 		s,t = links[path[0]][0], links[path[-1]][1]
 		# Try to find an alternative path to this path
 		paths = FindKPaths(s,t)
-		pathcost = []
+		goodpaths = []
 		for p in paths:
 			if set(p) & set(hotlinks): continue
 			if p in allpaths[s,t]: continue
@@ -307,30 +307,30 @@ while improved:
 				if headroom <= traffic[s,t]/(len(allpaths[s,t])+1): continue
 			else:
 				if headroom <= traffic[s,t]/k: continue
-			pathcost.append((ComputeCost(p), p))
-		if len(pathcost)==0: continue
+			goodpaths.append(p)
+		if len(goodpaths)==0: continue
 		# Alternative path available: Update link costs
-		mincost,minpath = random.choice(pathcost)
+		newpath = random.choice(goodpaths)
 		if len(allpaths[s,t]) < k:
 			# add this path as we did not have k paths for this pair yet
-			for l in minpath:
+			for l in newpath:
 				linkload[l] += traffic[s,t]/(len(allpaths[s,t])+1)
 			for l in (ll for p in allpaths[s,t] for ll in p):
 				linkload[l] += traffic[s,t]/(len(allpaths[s,t])+1) - traffic[s,t]/len(allpaths[s,t])
-			pathnode = [nodes[s]] + [nodes[links[l][1]] for l in minpath]
+			pathnode = [nodes[s]] + [nodes[links[l][1]] for l in newpath]
 			print "Added (%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
 		else:
 			# replace path to keep only k paths for this pair
-			for l in minpath:
+			for l in newpath:
 				linkload[l] += traffic[s,t]/len(allpaths[s,t])
 			for l in path:
 				linkload[l] -= traffic[s,t]/len(allpaths[s,t])
 			allpaths[s,t].remove(path)
 			pathnode = [nodes[s]] + [nodes[links[l][1]] for l in path]
 			print "Removed (%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
-			pathnode = [nodes[s]] + [nodes[links[l][1]] for l in minpath]
+			pathnode = [nodes[s]] + [nodes[links[l][1]] for l in newpath]
 			print "Added (%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
-		allpaths[s,t].append(minpath)
+		allpaths[s,t].append(newpath)
 		improved = True
 
 

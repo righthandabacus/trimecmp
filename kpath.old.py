@@ -289,7 +289,7 @@ while improved:
 		parallelpaths = [p for p in allpaths if links[p[0]][0]==s and links[p[-1]][1]==t]
 		# Try to find an alternative path to this path
 		tree,paths = Eppstein(s,t)
-		pathcost = []
+		goodpaths = []
 		for p in paths:
 			pathlinks = Sidetrack2Path(tree, p[1], s, t)
 			if set(pathlinks) & set(hotlinks): continue
@@ -299,29 +299,29 @@ while improved:
 				if headroom <= traffic[s,t]/(len(parallelpaths)+1): continue
 			else:
 				if headroom <= traffic[s,t]/k: continue
-			pathcost.append((ComputeCost(pathlinks), pathlinks))
-		if len(pathcost)==0: continue
+			goodpaths.append(pathlinks)
+		if len(goodpaths)==0: continue
 		# Alternative path available: Update link costs
-		mincost,minpath = min(pathcost)
-		allpaths.append(minpath)
+		newpath = random.choice(goodpaths)
+		allpaths.append(newpath)
 		if len(parallelpaths) < k:
 			# add this path as we did not have k paths for this pair yet
-			for l in minpath:
+			for l in newpath:
 				linkload[l] += traffic[s,t]/(len(parallelpaths)+1)
 			for l in (ll for p in parallelpaths for ll in p):
 				linkload[l] += traffic[s,t]/(len(parallelpaths)+1) - traffic[s,t]/len(parallelpaths)
-			pathnode = [nodes[s]] + [nodes[links[l][1]] for l in minpath]
+			pathnode = [nodes[s]] + [nodes[links[l][1]] for l in newpath]
 			print "Added (%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
 		else:
 			# replace path to keep only k paths for this pair
 			allpaths.remove(path)
-			for l in minpath:
+			for l in newpath:
 				linkload[l] += traffic[s,t]/len(parallelpaths)
 			for l in path:
 				linkload[l] -= traffic[s,t]/len(parallelpaths)
 			pathnode = [nodes[s]] + [nodes[links[l][1]] for l in path]
 			print "Removed (%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
-			pathnode = [nodes[s]] + [nodes[links[l][1]] for l in minpath]
+			pathnode = [nodes[s]] + [nodes[links[l][1]] for l in newpath]
 			print "Added (%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
 		improved = True
 
