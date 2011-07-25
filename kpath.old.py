@@ -23,7 +23,7 @@ shortest = False		# use only shortest path
 digraph = False			# topology specification is a digraph
 overshoot = 25.0		# percentage of length overshoot (w.r.t. shortest path) tolerated, effective only if shortest==False
 
-random.seed(1)
+#random.seed(1)
 optlist, userlist = getopt.getopt(sys.argv[1:], 't:m:k:dso:')
 for opt, optarg in optlist:
 	if opt == '-t':
@@ -86,20 +86,35 @@ def ReadInput(f1, f2):
 	trafficFile.close()
 	return nodes, links, length, capacity, traffic
 
-BellmanFordMemoize = dict()
-def BellmanFord(t):
+class memoized(object):
+	""" Copied from http://wiki.python.org/moin/PythonDecoratorLibrary
+	Decorator that caches a function's return value each time it is called.
+	If called later with the same arguments, the cached value is returned, and
+	not re-evaluated.
 	"""
-	Caching function for _BellmanFord(): The distance to destination t is
-	returned from cache BellmanFordMemoize. If not in cache, call
-	_BellmanFord(t).
-	"""
-	try:
-		n,d = BellmanFordMemoize[t]
-	except KeyError:
-		n,d = _BellmanFord(t)
-	return n,d
+	def __init__(self, func):
+		self.func = func
+		self.cache = {}
+	def __call__(self, *args):
+		try:
+			return self.cache[args]
+		except KeyError:
+			value = self.func(*args)
+			self.cache[args] = value
+			return value
+		except TypeError:
+			# uncachable -- for instance, passing a list as an argument.
+			# Better to not cache than to blow up entirely.
+			return self.func(*args)
+	def __repr__(self):
+		"""Return the function's docstring."""
+		return self.func.__doc__
+	def __get__(self, obj, objtype):
+		"""Support instance methods."""
+		return functools.partial(self.__call__, obj)
 
-def _BellmanFord(t):
+@memoized
+def BellmanFord(t):
 	"""
 	Use Bellman-Ford to deduce the shortest path tree of any node to t
 	"""
@@ -147,11 +162,12 @@ def Sidetrack2Path(tree, sidetracks, s, t):
 	# Destination reached. Return the path
 	return path
 
-def FindKPaths(s,t):
+@memoized
+def Eppstein(s,t):
 	"""
-	Find k paths joining nodes s and t. The topology is stored in array
-	`links'. The nodes s and t refers to the node sequence numbers with
-	respect to the array `nodes'.
+	Find a number of paths joining nodes s and t. The topology is stored in
+	array `links'. The nodes s and t refers to the node sequence numbers
+	with respect to the array `nodes'.
 	"""
 
 	# Eppstein's algorithm for k shortest path. In below we have
@@ -203,6 +219,14 @@ def FindKPaths(s,t):
 				heapq.heappush(leaves, newpath)
 		# quit if we exhausted all the paths (to avoid poping an empty heap)
 		if len(leaves)==0: break
+	return tree,paths
+
+def FindKPaths(s,t):
+	'''
+	Find the k best paths joining s to t
+	'''
+	# Use Eppstein's algorithm to find a large number (10*k) of paths
+	tree,paths = Eppstein(s,t)
 
 	# Amongst the 10*k paths, find the best k
 	pathcost = []
@@ -222,10 +246,8 @@ def FindKPaths(s,t):
 			sortedcost = sortedcost[1:]
 			if len(selectedPath) == k: break
 	for p in selectedPath:
-		pathnode = [nodes[links[p[0]][0]]]
-		for l in p:
-			pathnode.append(nodes[links[l][1]])
-		print "(%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
+		pathnode = [nodes[links[p[0]][0]]] + [nodes[links[l][1]] for l in p]
+		print "Path (%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
 	return selectedPath
 
 ###########################################################
@@ -252,10 +274,65 @@ for pair in pairs:
 
 ###########################################################
 # Step 3:
+#   Fine-tuning result
+print "Link loads"
+print "\n".join(str(["(%s,%s)" % (nodes[e[0]], nodes[e[1]]),linkload[i]]) for i,e in sorted(enumerate(links),key=lambda x:linkload[x[0]]))
+improved = True
+while improved:
+	# Find the paths that pass through bottleneck links
+	maxload = max(linkload)
+	hotlinks = [l for l in range(len(links)) if linkload[l]==maxload]
+	heavypaths = [p for p in allpaths if set(p) & set(hotlinks)]
+	improved = False
+	for path in heavypaths:
+		s,t = links[path[0]][0], links[path[-1]][1]
+		parallelpaths = [p for p in allpaths if links[p[0]][0]==s and links[p[-1]][1]==t]
+		# Try to find an alternative path to this path
+		tree,paths = Eppstein(s,t)
+		pathcost = []
+		for p in paths:
+			pathlinks = Sidetrack2Path(tree, p[1], s, t)
+			if set(pathlinks) & set(hotlinks): continue
+			if pathlinks in parallelpaths: continue
+			headroom = maxload - max(linkload[l] for l in pathlinks)
+			if len(parallelpaths) < k:
+				if headroom <= traffic[s,t]/(len(parallelpaths)+1): continue
+			else:
+				if headroom <= traffic[s,t]/k: continue
+			pathcost.append((ComputeCost(pathlinks), pathlinks))
+		if len(pathcost)==0: continue
+		# Alternative path available: Update link costs
+		mincost,minpath = min(pathcost)
+		allpaths.append(minpath)
+		if len(parallelpaths) < k:
+			# add this path as we did not have k paths for this pair yet
+			for l in minpath:
+				linkload[l] += traffic[s,t]/(len(parallelpaths)+1)
+			for l in (ll for p in parallelpaths for ll in p):
+				linkload[l] += traffic[s,t]/(len(parallelpaths)+1) - traffic[s,t]/len(parallelpaths)
+			pathnode = [nodes[s]] + [nodes[links[l][1]] for l in minpath]
+			print "Added (%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
+		else:
+			# replace path to keep only k paths for this pair
+			allpaths.remove(path)
+			for l in minpath:
+				linkload[l] += traffic[s,t]/len(parallelpaths)
+			for l in path:
+				linkload[l] -= traffic[s,t]/len(parallelpaths)
+			pathnode = [nodes[s]] + [nodes[links[l][1]] for l in path]
+			print "Removed (%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
+			pathnode = [nodes[s]] + [nodes[links[l][1]] for l in minpath]
+			print "Added (%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
+		improved = True
+
+###########################################################
+# Step 4:
 #   Output result to console
 print "All the paths:"
-print "\n".join(str([links[j] for j in i]) for i in allpaths)
+for p in allpaths:
+	pathnode = [nodes[links[p[0]][0]]] + [nodes[links[l][1]] for l in p]
+	print "(%s,%s) : %s" % (nodes[s], nodes[t], " ".join(pathnode))
 print "Link loads"
-print "\n".join([str(["(%s,%s)" % (nodes[e[0]], nodes[e[1]]),linkload[i]]) for i,e in enumerate(links)])
+print "\n".join(str(["(%s,%s)" % (nodes[e[0]], nodes[e[1]]),linkload[i]]) for i,e in sorted(enumerate(links),key=lambda x:linkload[x[0]]))
 
 sys.exit(1)
