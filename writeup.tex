@@ -470,6 +470,33 @@ three limitations:
 	not be utilzing all the $k$ paths.
 \end{itemize}
 
+To partially deal with the limitation of the greedy algorithm and improve the
+output, we can fine-tune the path selections after the main algorithm as
+follows: Firstly, find the links of the heaviest load. This is the set of hot
+links in the current configuration. Then, for each path that traverses any hot
+links, try to look for a substitute path such that, if replaced, we can lower
+the load on one existing hot link but not creating a new hot link. This
+algorithm is outlined in Algorithm \ref{alg:4}.
+
+\begin{algorithm}
+\caption{Fine-tuning path selection}\label{alg:4}
+\KwData{Path set $P$}
+\Repeat{no more change in the path selection is possible}{
+  \tcc{Find all paths that traverses a hot link}
+  $\hat{E} := \arg\max_e \lambda_e$ \;
+  $\hat{P} := \{p : p\in P \textrm{ such that }e\in p\ \exists e\in\hat{E}\}$\;
+  \ForEach{$p\in\hat{P}$}{
+    \tcc{Find a candidate substitution path}
+    $(s,t)$ := Source-destination pair of $p$\;
+    $\Pi$ := all valid paths joining $s$ to $t$ that (a) not in $P$, and (b) not traversing $\hat{E}$, and (c) can alleviate a hot link without creating a new one\;
+    \If{$\Pi\neq\emptyset$}{
+      Replace $p$ with any path in $\Pi$\;
+      Update $P$
+    }
+  }
+}
+\end{algorithm}
+
 Moreover, the algorithm is based on the assumptions that we can use any
 arbitrary loop-free paths to forward traffic and the traffic demand is known a
 priori. The former assumption can be readily achieved by setting up end-to-end
