@@ -1,0 +1,124 @@
+The files contained in this package is described below:
+
+ecmp.py
+  The program to simulate the workload of ECMP. It takes a topology file and a
+  traffic matrix file. The traffic matrix file describes the size of traffic
+  between any two node. This program distribute such traffic according to the
+  ECMP principle, on shortest paths between these two nodes. The traffic is
+  assumed to be fluid, thus they can be divided in equal proportions to each
+  equally shortest paths. For details of the available options, type:
+    $ ./ecmp.py -h
+
+kpath.py
+  The program to find $k$ paths or less between any pairs in the traffic
+  matrix. Same as ecmp.py, it takes a topology file and traffic matrix file. It
+  also takes a percentage tolerance to find the paths that are a bit longer
+  than the shortest path. For example, if the shortest path between s and t has
+  length 10, and the tolerance is 25%, a path of 12.5 or less would be accepted
+  to forward traffic for (s,t). Amongst all these eligible paths, this program
+  finds at most $k$ paths to forward their traffic, so as to minimize the
+  maximum link load. For details of the available options, type:
+    $ ./kpath.py -h
+
+kpathload.py
+  This program works in conjunction with kpath.py. It takes the output of
+  kpath.py to collect the path information. Then with the supplied topology
+  file and traffic matrix file, it find the link load if this supplied traffic
+  matrix is applied to the given paths. The purpose of this script is to check
+  the effect of a deviation of the traffic matrix. Therefore, it assumes the
+  same topology file is provided to this script as in kpath.py, and the traffic
+  matrix has the same node pairs as before but with variation in the traffic
+  size. For details of the available options, type:
+    $ ./kpathload.py -h
+
+routeecmp.py
+  This program is similar to ecmp.py, but it takes a flow file instead of a
+  traffic matrix. The flow file is a specification of individual flows with
+  their arrival/departure time. This program assumes such flows are fixed-rate
+  fluid flows, and place these flows into the network using flow-based ECMP
+  principle, i.e. no splitting of a flow into multiple paths but the shortest
+  path to deliver this flow is randomized. This program outputs a series of
+  link load changes with its time. For details of the available options, type:
+    $ ./routeecmp.py -h
+
+routekpath.py
+  Similar to routeecmp.py, but using the kpath.py output as a clue on the path
+  selection. It takes a topology file, the output of kpath.py, and a flow file
+  as input. It simulates the flows' arrival and departure to the network, but
+  the path to deliver each flow is selected randomly from the paths found by
+  kpath.py. This program outputs a series of link load changes with tits time.
+  For details of the available options, type:
+    $ ./routekpath.py -h
+
+topogen-fbfly.py
+  Topology generator: It generates a flattened butterfly topology. If no
+  options provided, it will generate a 8-ary 2-flat FBFLY network. The output
+  is in Rocketfuel format suitable for use in the above scripts. For details of
+  the available options, type:
+    $ ./topogen-fbfly.py -h
+
+topogen-ft.py
+  Topology generator: It generates a fat-tree topology. If no options provided,
+  it will generate a degree-3 fat-tree, i.e. XGFT(2;3,6;3,3). The output is in
+  Rocketfuel format suitable for use in the above scripts. For details of the
+  available options, type:
+    $ ./topogen-ft.py -h
+
+topogen-vl2.py
+  Topology generator: It generates the topology as described by the VL2 paper.
+  If no options provided, it will generate the topology with 3 cores switches,
+  6 aggregation switches, and 12 edge switches. The output is in Rocketfuel
+  format suitable for use in the above scripts. For details of the available
+  options, type:
+    $ ./topogen-vl2.py -h
+
+matrixgen.py
+  Traffic matrix generator. It takes a Rocketfuel topology file as input, and
+  for each ordered pair of distinct nodes in the topology, generate a uniformly
+  random load in [0:1]. The output format is suitable for use in ecmp.py,
+  kpath.py, and kpathload.py. For details of the available options, type:
+    $ ./matrixgen.py -h
+
+flowgen.py
+  Flow generator. It takes a Rocketfuel topology file as input, and generate
+  flows to every pair of distinct nodes in the time interval [0:100s]. The flow
+  generated are of uniformly distributed size, Poisson arrival, and exponential
+  duration. By default, the size is in [0:1], arrival rate is 4 per second, and
+  the mean duration is 2 seconds. For details of the available options, type:
+    $ ./flowgen.py -h
+
+Below are some example on the usage of these scripts:
+
+1. Generate a fat-tree topology with degree-4 and save to file `fattree4.topo':
+     $ ./topogen-ft.py -k 4 > fattree4.topo
+
+2. Based on the topology generated, obtain a traffic matrix and flow schedule.
+Since we do not assume traffic can arise from aggregation and core switches,
+but only between edge switches, we filter the output with `grep':
+     $ ./matrixgen.py -t fattree4.topo | grep -v '[CA]' > fattree4.matrix
+     $ ./flowgen.py -t fattree4.topo -a 5 -d 1 | grep -v '[CA]' > fattree4.flow
+
+3. Run the ECMP script to find the load according to only the traffic matrix:
+     $ ./ecmp.py -t fattree4.topo -m fattree4.matrix
+
+3. Run the k-path script to find the load according to only the traffic matrix.
+Note that, we say a path of 20% more lengthy than the shortest path is accpeted
+here. In fat-tree with 3 layers, this is equivalent to taking only the shortest
+paths. We save the output to file `fattree4.kpath':
+     $ ./kpath.py -t fattree4.topo -m fattree4.matrix -k 4 -o 20 > fattree4.kpath
+
+4. Base on the output of kpath.py, we check the load with another traffic matrix
+     $ ./matrixgen.py -t fattree4.topo | grep -v '[CA]' > fattree4-new.matrix
+     $ ./kpathload.py -t fattree4.topo -p fattree4.kpath -m fattree4-new.matrix
+
+5. Apply the flows to the paths found by kpath.py and see the link utilization
+vs time:
+     $ ./routekpath.py -t fattree4.topo -p fattree4.kpath -f fattree4.flow
+
+6. Same as above, but using ECMP forwarding:
+     $ ./routeecmp.py -t fattree4.topo -f fattree4.flow
+
+These scripts, and the future updates, are availabe online at
+https://bitbucket.org/adrianswtam/trimecmp
+
+-- Adrian Sai-wah Tam <adrian.sw.tam@gmail.com>

@@ -1,15 +1,47 @@
 #!/usr/bin/env python
-# This program takes two input files: (1) a Rocketfuel format topology file and
-# (2) traffic matrix file with the format of
-#     <node> <node> <load>
-# where the <node> is the code correspond to the topology file and the <load>
-# is a floating point number less than one. The link capacity is assume to be
-# one for all links.
+#
+# Copyright (c) 2011 Polytechnic Institute of New York University
+# Author: Adrian Sai-wah Tam <adrian.sw.tam@gmail.com>
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED ''AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES,
+# INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+# FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR
+# OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # 
-# The program finds k paths between every pair of nodes mentioned in the
-# traffic matrix, which k is a parameter to this program. The paths are found
-# such that it minimizes the resultant network cost when each of the k paths
-# carries 1/k of the load for the pair of node.
+# The views and conclusions contained in the software and documentation are
+# those of the authors and should not be interpreted as representing official
+# policies, either expressed or implied, of New York University.
+
+#
+# This program takes two input files: (1) a Rocketfuel format topology file and
+# (2) a flow file in the format of 
+#     <node> <node> <load> <begin> <end>
+# where the <node> is the code correspond to the topology file and the <load>
+# is a floating point number, <begin> and <end> are the time for this flow to
+# start and finish.
+# 
+# The program place these flows into the network using flow-based ECMP, i.e.
+# each flow will only take one path, but the path is selected at random amongst
+# all equal-cost shortest paths. This program simulate the flows'
+# arrival/departure as discrete events and output the change of link loads
+# against time.
 #
 
 import getopt,sys,random,heapq
@@ -20,7 +52,8 @@ topofile = 'topology.txt'	# default topology file
 flowfile = 'flow.txt'		# default flow specification file
 digraph = False			# topology specification is a digraph
 
-optlist, userlist = getopt.getopt(sys.argv[1:], 't:f:ds')
+#random.seed(1)		# Debug use: Uncomment this line for repeatible random numbers
+optlist, userlist = getopt.getopt(sys.argv[1:], 't:f:dsh')
 for opt, optarg in optlist:
 	if opt == '-t':
 		topofile = optarg
@@ -30,14 +63,18 @@ for opt, optarg in optlist:
 		digraph = True
 	else:
 		# getopt will fault for other options
+		print "Available options"
+		print " -t file : The topology file in Rocketfuel format, default is topology.txt"
+		print " -f file : The flow file, default is flow.txt"
+		print " -d : Treat the topology file as digraph, i.e. each link is unidirectional"
+		print " -h : This help message"
 		sys.exit(1)
 
 ###########################################################
 # Helper functions
 def ReadInput(f1, f3):
 	"""
-	Read in a Rocketfuel format topology file, and then the traffic matrix,
-	then the flow specification.
+	Read in a Rocketfuel format topology file, and then the flow specification.
 	We assumed the link specification contains at least the two endpoints
 	refered by the name of nodes. Optionally, the 3rd and 4th argument in
 	the link specification are the length and capacity respectively. This
@@ -50,17 +87,17 @@ def ReadInput(f1, f3):
 	"""
 	print "Reading input file %s" % f1
 	topoFile = open(f1, "r")	# Topology file
-	nodeDic = {}
-	nodes = []
-	links = []
-	length = []
-	capacity = []
+	nodes = []	# names of nodes
+	links = []	# links as an ordered pair of node IDs
+	length = []	# lengths of links
+	capacity = []	# link capacities
+	nodeDic = {}	# reverse lookup for node ID
 	for line in topoFile:
 		token = line.split()
 		if (len(token) < 2): continue
 		if token[0] == "N":	# specifying a node by its name
-			nodes.append(token[1])
 			nodeDic[token[1]] = len(nodes) - 1
+			nodes.append(token[1])
 		elif token[0] == "l":	# specifying a link as a connection between two nodes
 			e = (nodeDic[token[1]], nodeDic[token[2]])
 			links.append(e)
@@ -74,13 +111,12 @@ def ReadInput(f1, f3):
 
 	print "Reading input file %s" % f3
 	flowFile = open(f3, "r")	# Flow history file
-	flows = []
-	events = []
+	flows = []	# flow specs (src,dst,size,begin,end)
+	events = []	# flow arrival/departure events (time, flowID, isArrival)
 	for line in flowFile:
 		token = line.split()
-		if (len(token) < 5): continue
-		begin = float(token[3])
-		end = float(token[4])
+		if (len(token) != 5): continue	# Not a flow specification
+		begin, end = float(token[3]), float(token[4])
 		if end == begin: continue	# Skip this malformed flow
 		heapq.heappush(events, (begin, len(flows), True))
 		heapq.heappush(events, (end, len(flows), False))
@@ -90,10 +126,11 @@ def ReadInput(f1, f3):
 	return nodes, links, length, capacity, flows, events
 
 class memoized(object):
-	""" Copied from http://wiki.python.org/moin/PythonDecoratorLibrary
+	"""
+	Copied from http://wiki.python.org/moin/PythonDecoratorLibrary
 	Decorator that caches a function's return value each time it is called.
-	If called later with the same arguments, the cached value is returned, and
-	not re-evaluated.
+	If called later with the same arguments, the cached value is returned,
+	and not re-evaluated.
 	"""
 	def __init__(self, func):
 		self.func = func
@@ -139,13 +176,15 @@ nodes, links, length, capacity, flows, events = ReadInput(topofile, flowfile)
 
 ###########################################################
 # Step 2:
-#   Exhaust the event list to establish/remove a flow on the network
+#   Exhaust the event list to establish/remove a flow on the network, and in
+#   the meantime, print the link load if there is any change
 
 clock = 0.0
 linkload = [0 for l in links]
-flowpaths = {}	# Dictionary for flow:->set of links mapping
-for e in range(len(links)):
-	print "%f\t%d\t%f" % (clock, e, linkload[e])
+flowpaths = {}	# Dictionary for flow:->set_of_links mapping
+for e,l in enumerate(linkload)
+	# print initial link load
+	print "%f\t%d\t%f" % (clock, e, l)
 while events:
 	time, fid, arrival = heapq.heappop(events)
 	if arrival:
@@ -155,13 +194,16 @@ while events:
 		path = []
 		clock = time
 		while currentnode != flows[fid][1]:
+			# Find a random next hop on the shortest paths
 			neighbour = list(set(e[1] for e in links if e[0]==currentnode))
 			mindist = min(dist[i] for i in neighbour)
 			minneighbour = [i for i in neighbour if dist[i] == mindist]
 			nextnode = random.choice(minneighbour)
+			# Then look up the link, and distribute traffic to it
 			linkid = [i for i,e in enumerate(links) if e == (currentnode, nextnode)]
 			path.append(linkid[0])
 			linkload[linkid[0]] += flows[fid][2]
+			# Print the upated link load
 			print "%f\t%d\t%f" % (clock, linkid[0], linkload[linkid[0]])
 			currentnode = nextnode
 		# Remember the path
