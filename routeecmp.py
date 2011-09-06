@@ -163,10 +163,13 @@ def BellmanFord(t):
 	n = [-1 for i in nodes]			# Next hop toward t
 	d[t] = 0
 	for i in range(len(nodes)-1):
+		nochange = True
 		for j,(u,v) in enumerate(links):
 			if d[u] > d[v] + length[j]:
+				nochange = False
 				d[u] = d[v] + length[j] 
 				n[u] = v
+		if nochange: break
 	return n,d
 
 ###########################################################
@@ -182,7 +185,7 @@ nodes, links, length, capacity, flows, events = ReadInput(topofile, flowfile)
 clock = 0.0
 linkload = [0 for l in links]
 flowpaths = {}	# Dictionary for flow:->set_of_links mapping
-for e,l in enumerate(linkload)
+for e,l in enumerate(linkload):
 	# print initial link load
 	print "%f\t%d\t%f" % (clock, e, l)
 while events:

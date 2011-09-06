@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python -u
 #
 # Copyright (c) 2011 Polytechnic Institute of New York University
 # Author: Adrian Sai-wah Tam <adrian.sw.tam@gmail.com>
@@ -51,7 +51,7 @@ matrixfile = 'matrix.txt'	# default matrix file
 k = 4				# maximum number of paths to find for a pair
 shortest = False		# use only shortest path
 digraph = False			# topology specification is a digraph
-overshoot = 25.0		# percentage of length overshoot (w.r.t. shortest path) tolerated, effective only if shortest==False
+overshoot = 0.25		# percentage of length overshoot (w.r.t. shortest path) tolerated, effective only if shortest==False
 maxpaths = 100			# maximum number of paths to return from the FindPaths function
 
 #random.seed(1)		# Debug use: Uncomment this line for repeatible random numbers
@@ -69,7 +69,7 @@ for opt, optarg in optlist:
 	elif opt == '-s':
 		shortest = True
 	elif opt == '-o':
-		n = float(optarg)
+		n = float(optarg)/100
 		if n > 0: overshoot = n
 		if n == 0: shortest = True
 	else:
@@ -168,10 +168,13 @@ def BellmanFord(t):
 	n = [-1 for i in nodes]			# Next hop toward t
 	d[t] = 0
 	for i in range(len(nodes)-1):
+		nochange = True
 		for j,(u,v) in enumerate(links):
 			if d[u] > d[v] + length[j]:
+				nochange = False
 				d[u] = d[v] + length[j] 
 				n[u] = v
+		if nochange: break
 	return n,d
 
 def ComputeCost(pathlinks):
@@ -245,7 +248,7 @@ def FindKPaths(s,t):
 			if links[edge][0] in sidenode: continue
 			# avoid too lengthy paths w.r.t. the shortest path
 			currentside = leafside[:] + [edge]
-			if sum(delta[i] for i in currentside) > dist[s]*(overshoot/100.0): continue
+			if sum(delta[i] for i in currentside) > dist[s]*overshoot: continue
 			# avoid duplicated set of sidetrack edges: sort them in order
 			currentside.sort()
 			if [sides for d, sides in paths if sides == currentside]: continue
@@ -387,7 +390,7 @@ while improved:
 
 
 ###########################################################
-# Step 3:
+# Step 4:
 #   Output result to console
 print "All the paths:"
 for (pair,paths) in allpaths.iteritems():

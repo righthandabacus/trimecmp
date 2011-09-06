@@ -31,7 +31,7 @@
 
 #
 # Fat-tree topology generator
-#   It generates a 3-level fat tree with each node of 2K degrees, i.e.
+#   It generates a 3-level fat tree with each node of 2k degrees, i.e.
 #   XGFT(3;k,k,2k;1,k,k) if hosts are generated, or XGFT(2;k,2k;k,k) if hosts
 #   are not generated. See the following for the XGFT() notation:
 #     S. R. Ohring, M. Ibel, S. K. Das, and M. J. Kumar, "On Generalized Fat

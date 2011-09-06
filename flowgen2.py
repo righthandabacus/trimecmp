@@ -31,30 +31,30 @@
 
 #
 # Flow generator
-#   Read in a set of nodes and produce a number of flows to every pair of
-#   distinct nodes in the time interval [0:100s]. The arrival is Poission and
-#   the lifetime is exponential for each pair. The size of flow, i.e. bandwidth
-#   consumption, is uniformly distributed in [0:1]
+#   Read in a set of nodes and a traffic matrix to produce a number of flows
+#   according to the traffic matrix in the time interval [0:100s]. The arrival
+#   is Poission and the lifetime is exponential for each pair. The size of
+#   flow, i.e. bandwidth consumption, is uniformly distributed in [0:1]
 #
 
 import sys,getopt,random,math
 
 ###########################################################
 # Global parameters
-topofile = 'topology.txt'	# default topology file
+matrixfile = 'matrix.txt'	# default traffic matrix file
 begintime = 0			# Time interval for flowgen
 endtime = 100
 meansize = 0.5			# Mean flow size
-arrivalrate = 4			# Arrival rate for a pair of nodes
 meanduration = 2		# Mean duration of a flow
+arrivalrate = 4			# Arrival rate for a pair of nodes
 
 #random.seed(1)		# Debug use: Uncomment this line for repeatible random numbers
-optlist, userlist = getopt.getopt(sys.argv[1:], 't:s:a:d:h')
+optlist, userlist = getopt.getopt(sys.argv[1:], 's:m:a:d:h')
 for opt, optarg in optlist:
-	if opt == '-t':
-		topofile = optarg
-	elif opt == '-s':
+	if opt == '-s':
 		meansize = float(optarg)
+	elif opt == '-m':
+		matrixfile = optarg
 	elif opt == '-a':
 		arrivalrate = float(optarg)
 	elif opt == '-d':
@@ -62,7 +62,7 @@ for opt, optarg in optlist:
 	else:
 		# getopt will fault for other options
 		print "Available options"
-		print " -t file : The topology file in Rocketfuel format, default is topology.txt"
+		print " -m file: Traffic matrix file, default is matrix.txt"
 		print " -s size : Mean flow size, default 0.5"
 		print " -a rate: Arrival rate of flows for a pair of nodes, default 4 per second"
 		print " -d time: Mean duration of a flow, default 2 seconds"
@@ -71,20 +71,18 @@ for opt, optarg in optlist:
 
 ###########################################################
 # Helper functions
-def ReadNodes(f):
+def ReadInput(f):
 	"""
-	Read in a Rocketfuel format topology file for the list of nodes
+	Read in a traffic matrix
 	"""
-	topoFile = open(f, "r")	# Topology file
-	nodes = []	# names of nodes
-	for line in topoFile:
+	trafficFile = open(f, "r")	# Traffic matrix file
+	traffic = {}
+	for line in trafficFile:
 		token = line.split()
-		if (len(token) < 2): continue
-		if token[0] == "N":	# specifying a node by its name
-			nodes.append(token[1])
-	topoFile.close()
-
-	return nodes
+		if (len(token) < 3): continue
+		traffic[token[0], token[1]] = meanduration/float(token[2])
+	trafficFile.close()
+	return traffic
 
 def FindSize(mean):
 	"""
@@ -107,14 +105,12 @@ def FindDuration(mean):
 
 ###########################################################
 # Main program
-#   Read in nodes, for each pair of distinct nodes, create a series of flows
-nodes = ReadNodes(topofile)
-for s in nodes:
-	for t in nodes:
-		if t == s: continue
-		clock = begintime
-		while clock < endtime:
-			size = FindSize(meansize)
-			clock = FindArrival(clock,arrivalrate)
-			duration = FindDuration(meanduration)
-			print "%s %s %f %f %f" % (s, t, size, clock, clock+duration)
+#   Read in traffic matrix, create a series of flows
+rate = ReadInput(matrixfile)
+for s,t in rate.keys():
+	clock = begintime
+	while clock < endtime:
+		size = FindSize(meansize)
+		clock = FindArrival(clock,arrivalrate)
+		duration = FindDuration(rate[s,t])
+		print "%s %s %f %f %f" % (s, t, size, clock, clock+duration)

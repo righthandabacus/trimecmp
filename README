@@ -79,6 +79,16 @@ matrixgen.py
   kpath.py, and kpathload.py. For details of the available options, type:
     $ ./matrixgen.py -h
 
+matrixgen2.py
+  Advanced traffic matrix generator. In addition to what matrixgen.py takes, it
+  takes a set of hot senders and hot receivers. So we partition the set of
+  nodes into `hot' and `cold'. Then we have traffic for hot sender to hot
+  receiver, hot sender to cold receiver, cold sender to hot receiver, and cold
+  sender to cold receiver. The traffic intensity for these four kinds varies.
+  For details of the operation, see the inline documentation of matrixgen2.py.
+  Details of the available options can be found in:
+    $ ./matrixgen2.py -h
+
 flowgen.py
   Flow generator. It takes a Rocketfuel topology file as input, and generate
   flows to every pair of distinct nodes in the time interval [0:100s]. The flow

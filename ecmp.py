@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python -u
 #
 # Copyright (c) 2011 Polytechnic Institute of New York University
 # Author: Adrian Sai-wah Tam <adrian.sw.tam@gmail.com>
@@ -149,10 +149,13 @@ def BellmanFord(t):
 	n = [-1 for i in nodes]			# Next hop toward t
 	d[t] = 0
 	for i in range(len(nodes)-1):
+		nochange = True
 		for j,(u,v) in enumerate(links):
 			if d[u] > d[v] + length[j]:
+				nochange = False
 				d[u] = d[v] + length[j] 
 				n[u] = v
+		if nochange: break
 	return n,d
 
 ###########################################################
@@ -171,6 +174,7 @@ linkload = [0 for l in links]
 pairs = traffic.keys()
 random.shuffle(pairs)
 for pair in pairs:
+	print "Filling " + str(pair)
 	# Find shortest paths tree by Bellman-Ford
 	#   dist[n] = the distance to destination from node n
 	#   load[n] = traffic arriving node n

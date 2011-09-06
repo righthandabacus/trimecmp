@@ -151,7 +151,7 @@ nodes, links, paths, flows, events = ReadInput(topofile, pathfile, flowfile)
 clock = 0.0
 linkload = [0 for l in links]
 flowpaths = {}	# Dictionary for flow:->set_of_links mapping
-for e,l in enumerate(linkload)
+for e,l in enumerate(linkload):
 	# print initial link load
 	print "%f\t%d\t%f" % (clock, e, l)
 while events:

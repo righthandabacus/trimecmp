@@ -36,7 +36,7 @@
 
 %\pagestyle{plain}
 
-\title{Triming the Multipath\\ for Efficient Dynamic Routing}
+\title{Trimming the Multipath\\ for Efficient Dynamic Routing}
 
 \author{
 \IEEEauthorblockN{Adrian S.-W. Tam \hspace{2em}
@@ -53,7 +53,19 @@ Email: adriantam@nyu.edu, kxi@poly.edu, chao@poly.edu}
 \maketitle
 
 \begin{abstract}
-Pending.
+Multipath routing is a trivial way to exploit the path diversity to leverage
+the network throughput. Technologies such as OSPF ECMP use all the available
+paths in the network to forward traffic, however, we argue that is not
+necessary to do so to load balance the network. In this paper, we consider
+multipath routing with only a limited number of end-to-end paths for each
+source and destination, and found that this can still load balance the traffic.
+We devised an algorithm to select a few paths for each source-destination pair
+so that when all traffic are forwarded over these paths, we can achieve a
+balanced load in the sense that the maximum link utilization is comparable to
+that of ECMP forwarding. When the constraint of only shortest paths (i.e. equal
+paths) are relaxed, we can even outperform ECMP in certain cases. As a result,
+we can use a few end-to-end tunnels between each source and destination nodes
+to achieve the load balancing of traffic.
 \end{abstract}
 
 \section{Introduction}\label{sec:intro}
@@ -61,7 +73,7 @@ The networks nowadays, in particular the data center networks, have a high
 degree of connectivity and redundancy. The traditional shortest path routing
 does not make use of them for a better performance. Such routing paradigm
 forward packets from its source to the destination on only one path. This may
-lead to unbalanced load and create `hot-spot' links. Introducing multipath
+lead to imbalanced load and create `hot-spot' links. Introducing multipath
 routing, such as OSPF \cite{rfc2328} ECMP, is an easy way to leverage the
 overall throughput of the network as well as balancing the load on different
 links.
@@ -70,7 +82,7 @@ There are two categories of multipath routing mechanisms in the current
 literature: hop-by-hop routing or end-to-end tunnels. The former, OSPF ECMP as
 an example, is scalable as each intermediate router selects the next hop of a
 route independently, and the routing tables on the routers are built
-distributedly. The latter mechanism is to build parallel end-to-end tunnels
+distributed. The latter mechanism is to build parallel end-to-end tunnels
 between a pair of end-points, such as using MPLS label switched paths
 \cite{rfc3031}. Then the traffic between the two end-points are forwarded over
 these established tunnels. This mechanism allows the forwarding paths to be
@@ -84,13 +96,13 @@ The controllability provided by the multipath routing using end-to-end tunnels
 are attractive to the network administrators as it is easier to load-balance
 the networks. However, there are hard limitations on the number of tunnels you
 can built. For example, SPAIN \cite{myam10} uses VLANs to separate the parallel
-forwarding paths, then it is subject to the size of the VLAN ID space for the
-number of VLANs that it can use; MATE \cite{ejlw01} builds upon MPLS, therefore
-it is subject to the limitation of MPLS label space. Moreover, on the same
+forwarding paths, then the number of VLANs that it can use is subject to the
+size of VLAN ID space; MATE \cite{ejlw01} builds upon MPLS, therefore it is
+subject to the limitation of MPLS label space. Moreover, on the same
 source-destination pair, the more the number of parallel paths, the higher the
 overhead in operation, such as the time and bandwidth spent on probing realtime
 path characteristics, and the computation resource on finding the optimal
-traffic spliting ratio amongst the paths.
+traffic splitting ratio among the paths.
 
 In this paper, we consider a data center network built with modern switches
 such as OpenFlow switches \cite{mabpprst08}, similar to the case in
@@ -98,7 +110,7 @@ such as OpenFlow switches \cite{mabpprst08}, similar to the case in
 congestion, we forward traffic on multipath routes. The multipath routes are
 prebuilt end-to-end connections for the flexibility in control. Because of the
 delay sensitivity in data center applications, shortest paths between the
-source and destination nodes are prefered. And because of the overhead in
+source and destination nodes are preferred. And because of the overhead in
 maintaining these connections, we would like to keep the number of parallel
 paths between a pair of nodes to be as small as possible, while allowing the
 network to be load-balanced and flows routed dynamically. In this setting, we
@@ -118,20 +130,20 @@ Multipath routing have been discussed since the early years of networking. A
 large body of literature is available addressing different issues of multipath
 routing. For example, \cite{ns99,vg00,vg01,mpc08} describe the way to deduce
 loop-free multipath routes in a hop-by-hop basis. Some other, such as
-\cite{ft00,bo07}, transform the multipath routing problem into constratined
+\cite{ft00,bo07}, transform the multipath routing problem into constrained
 optimization to find the optimal way to forward traffic for highest throughput
 and lowest congestion. QoS routing is addressed in
 \cite{wc96,ms97,rfc2386,cn98,jng01}, which is to perform multipath routing to
 satisfy QoS guarantees.
 
 Multipath has the potential to allow dynamic load balancing without route
-change. There are proposals on spliting traffic to different paths adaptive to
+change. There are proposals on splitting traffic to different paths adaptive to
 the current network conditions for a better load balance, such as the OSPF
 Optimized Multipath \cite{ospfomp} and MPLS Optimized Multipath \cite{mplsomp}. 
 MATE \cite{ejlw01} proposed an analytical model and algorithms to adjust the
 traffic ratio on the multipaths in order to reduce the network congestion.
 Similarly, in \cite{nzd04}, the authors propose to use multipath routing
-adaptively by adjusting the traffic split ratio amongst different path
+adaptively by adjusting the traffic split ratio among different path
 according to regularly updated utilization information. The context of
 \cite{nzd04} is in QoS routing, i.e. bandwidth on the path is explicitly
 reserved for a flow. However, it also recognizes the need to reduce the number
@@ -143,25 +155,25 @@ are different in certain sense: Firstly, the multipath find in \cite{nzd04}
 depends on the current utilization information. Such statistics is volatile and
 the selection of the multipath is updated time to time. Our work, however, is
 based on an estimate of the traffic matrix to find the multipath. The multipath
-is stable amid the fluctuating utilization on the network. Secondly, the
-multipath is selected individually on each sender node in \cite{nzd04}. This
-approach does not allow the coordinated multipath selection, therefore it may
-unintentionally lead the concurrent flows to contention at certain links. Our
-approach is to do the multipath selection from a centralized view, so that by
-strategically selecting different paths for the traffic, the load-balancing
-objective is achieved.
+is stable amid the fluctuating utilization on the network. The insensitivity of
+our performance to the traffic matrix is evaluated in section \ref{sub:varied}.
+Secondly, the multipath is selected individually on each sender node in
+\cite{nzd04}. This approach does not allow the coordinated multipath selection,
+therefore it may accidentally lead the concurrent flows to contention at
+certain links. Our approach is to do the multipath selection from a centralized
+view, so that by strategically selecting different paths for the traffic, the
+load-balancing objective is achieved.
 
 \section{Problem Statement}\label{sec:problem}
 
 The easiest way to run multipath routing in commodity switches and routers is
 to turn on the equal-cost multipath forwarding (ECMP). ECMP performs per-hop
 decision to evenly distribute traffic to all the next hops that are equally
-close to the destination. Because of its ubiqutous availability, ECMP
+close to the destination. Because of its ubiquitous availability, ECMP
 forwarding is also proposed in data center networks to obtain a higher
 throughput. See VL2 \cite{gjkklmps09} for example. This is a multipath routing
-using hop-by-hope decisions. Therefore, the forwarding paths of a flow
-according to ECMP may not be mutually disjoint, and the traffic may not be well
-balanced.
+using hop-by-hop decisions. Therefore, the forwarding paths of a flow according
+to ECMP may not be mutually disjoint, and the traffic may not be well balanced.
 
 \begin{figure}
 \begin{center}
@@ -195,10 +207,10 @@ shortest path computation. The arrows between nodes denotes the shortest path
 tree toward T. When one unit of traffic is sent from S to T, the ECMP routing
 logic will split the traffic to each link as shown in the figure. Here we can
 see, the link CT is carrying three times more traffic than link DT, because at
-each node ECMP splits traffic equally amongst all the valid next hops. To solve
+each node ECMP splits traffic equally among all the valid next hops. To solve
 this problem, optimized multipath \cite{ospfomp} and adaptive multipath
 \cite{gzrr03} are proposed. They make use of the packet loss information to
-split the traffic amongst different paths. In essense, the traffic load on a
+split the traffic among different paths. In essence, the traffic load on a
 path is adaptive to the level of congestion. However, we can see that, the same
 problem can be solved easily by removing the path S-B-C-T, i.e. not to use all
 the available multipaths but a subset of them.
@@ -206,7 +218,7 @@ the available multipaths but a subset of them.
 How can we use a subset of available paths in multipath routing? An easy way is
 to build the multipath using tunnels, such as the MPLS label switched paths. As
 the OpenFlow architecture \cite{mabpprst08} getting popular, we can also make
-use of the flexibility to pin point a path in OpenFlow switches or manipulating
+use of its flexibility to pin-point a path in OpenFlow switches or manipulating
 their forwarding table to achieve the same goal. Therefore, the remaining
 problem is that, how should we select the paths for multipath routing, so that
 we can have a better load-balancing or equivalently, minimize the congestion.
@@ -222,13 +234,13 @@ The objective is to route efficiently, namely, to minimize the maximum link
 utilization on the network.
 
 This is similar to the multi-commodity flow problem \cite{pm04} but with
-additional constraints on the traffic splitting. Afterwards, we will remove the
-requirement of providing $k$ as a parameter, and to find the optimal number of
-paths given the traffic matrix.
+additional constraints on splitting traffic evenly to all viable paths.
+Afterwards, we will remove the requirement of providing $k$ as a parameter, and
+to find the optimal number of paths given the traffic matrix.
 
 \section{The Algorithm}\label{sec:algo}
 
-\subsection{Heuristic algorithm on path selecion}
+\subsection{Heuristic algorithm on path selection}
 As the complexity in solving the multi-commodity flow problem for the optimal
 solution is high, a heuristic algorithm is devised. The heuristic algorithm is
 to find the multipaths individually between a pair of nodes. Since our goal is
@@ -293,7 +305,7 @@ maximum link utilization, we use the following cost function in our paper:
 \label{maxfunction}
 \end{align}
 This function takes a path $p$ as an argument, and find the maximum link
-utilization amongst all the links on this path. The fraction represents the
+utilization among all the links on this path. The fraction represents the
 resulting utilization if this path is chosen to carry traffic from $s$ to $t$,
 namely, the total resulting traffic, $\lambda_e+\alpha_{st}/k$ divided by the
 link capacity $\mu_e$.
@@ -307,7 +319,7 @@ maximum link utilization.
 
 In line \ref{alg:1:tiebreak}, we use the path length as the tie-breaker if
 there are several paths of the equal lowest cost. When these paths are of equal
-length, we randomly pick one amongst them.
+length, we randomly pick one among them.
 
 \subsection{Path finding algorithm}
 
@@ -355,12 +367,19 @@ sidetrack edges are given, the path from $s$ to $t$ is constructed as follows:
 We start from node $s$ on the network, and traverse the edges until we reach
 $t$. At every node, the edge to traverse is determined uniquely by first
 looking for any edge that is included in the set of sidetrack edges. If none
-are found, then we follow the edge on the shortest path tree $T$. Therefore, a
+is found, then we follow the edge on the shortest path tree $T$. Therefore, a
 well-formed set of sidetrack edges shall not contain more than one edge
 emerging from the same node. Moreover, the path constructed in this way shall
 exhaust all the provided sidetrack edges to make this set of sidetrack edges
 well-formed. Thus, for any loop-free path, there is a corresponding set of
 sidetrack edges, but not vice versa.
+
+We use \figurename~\ref{fig:badecmp} to illustrate the idea of the Eppstein's
+algorithm. An empty set of sidetrack edges means we traverse along the shortest
+path tree. Therefore, for S to T, the path would be S-A-C-T. If the set of
+sidetrack edges is A-B and C-D, the path would be S-A-B-C-D-T. But if the set
+of sidetrack edges is B-A only, we cannot find a corresponding path since we
+can never reach node B from S along the shortest path tree.
 
 The latter half of the path finding algorithm is crucial to enumerate the paths
 in ascending order of path length. The quantity $c(e)$ represents the penalty
@@ -388,12 +407,12 @@ be selected.
 
 \subsection{Optimal number of paths}\label{sub:optimalk}
 
-According to our evaluation in section \ref{sec:eval}, we find that having more
-path diversity does not necessarily decrease the maximum link utilization on
-the network. Indeed, the increase in $k$ (the number of paths in a multipath
-set between a pair of nodes) exhibits the law of diminishing return. Therefore,
-it is interesting to ask, for a particular topology, at least how many paths we
-needed to enjoy the benefits of multipath routing.
+According to our evaluation, we find that having more path diversity does not
+necessarily decrease the maximum link utilization on the network. Indeed, the
+increase in $k$ (the number of paths in a multipath set between a pair of
+nodes) exhibits the law of diminishing return. Therefore, it is interesting to
+ask, for a particular topology, at least how many paths we needed to enjoy the
+benefits of multipath routing.
 
 \begin{algorithm}
 \caption{Algorithm to place routes on a network}\label{alg:3}
@@ -431,7 +450,7 @@ is extended to a new path which involves a heavily loaded link, additional
 traffic will make the link even more heavily loaded. In line
 \ref{alg:3:optimal} of Algorithm \ref{alg:3}, we check if extending the
 existing set $\pi_{st}$ of paths for $(s,t)$ to a new path $p$ is worthwhile by
-verifying if the additional path can lower the maximum link load amongst he
+verifying if the additional path can lower the maximum link load among he
 links in concern, i.e.
 \begin{align*}
 \max \{\lambda_e': e\in q, q\in(\pi_{st}\cup\{p\})\} \le \max \{\lambda_e:e\in q, q\in\pi_{st}\},
@@ -447,11 +466,11 @@ of parallel paths is mostly limited by the condition in line
 
 \subsection{Limitations of the Algorithm}
 
-The algoritms to find the $k$ paths for all the source-destination pairs is
+The algorithms to find the $k$ paths for all the source-destination pairs is
 presented in the previous subsections. The algorithms do not try to find the global
 optimal but instead, they are heuristic algorithms to approximate the solution.
 
-Because the heusitic algorithms search the paths in a greedy manner, there are
+Because the heuristic algorithms search the paths in a greedy manner, there are
 three limitations:
 
 \begin{itemize}
@@ -467,12 +486,12 @@ three limitations:
 \item Particular to Algorithm \ref{alg:1}, it finds $k$ paths for a
 	source-destination pair whenever it is possible. However, for the
 	objective of minimizing the maximum link load, the best solution may
-	not be utilzing all the $k$ paths.
+	not be utilizing all the $k$ paths.
 \end{itemize}
 
 To partially deal with the limitation of the greedy algorithm and improve the
 output, we can fine-tune the path selections after the main algorithm as
-follows: Firstly, find the links of the heaviest load. This is the set of hot
+follows: Firstly, find the links of the maximum load. This is the set of hot
 links in the current configuration. Then, for each path that traverses any hot
 links, try to look for a substitute path such that, if replaced, we can lower
 the load on one existing hot link but not creating a new hot link. This
@@ -501,225 +520,326 @@ Moreover, the algorithm is based on the assumptions that we can use any
 arbitrary loop-free paths to forward traffic and the traffic demand is known a
 priori. The former assumption can be readily achieved by setting up end-to-end
 paths, such as MPLS LSP. If only hop-by-hop forwarding is allowed, the
-selection of paths (Algorithm \ref{alg:2} would be more restricted. The latter
+selection of paths (Algorithm \ref{alg:2}) would be more restricted. The latter
 assumption is also a reasonable one as we can merely estimate the traffic
 matrix by statistics of historical usage data.
 
 \section{Evaluations}\label{sec:eval}
 
-Two sets of evaluations is done on this algorithm, to compare its performance
-against the standard ECMP. The first evaluation is to compare the traffic load
-on each links as a result of even distribution according to ECMP, and according
-to the path-finding of the algorithm.
+Evaluations are done on the heuristic algorithm in section \ref{sec:algo}, to
+compare its performance against the standard ECMP. The first evaluation is to
+compare the traffic load on each links as a result of even distribution
+according to ECMP, against using the paths found by the algorithm (section
+\ref{sub:subset}).  Subsequently, we investigate the effect of adjusting
+different parameters in the algorithm (sections \ref{sub:nonshort} and
+\ref{sub:k}) and its sensitivity to traffic matrix (section \ref{sub:varied}).
+Finally, we use flow-based simulation to verify our statements on the
+performance of the algorithm (section \ref{sub:dyn}).
 
-\subsection{Fluid traffic demand}
+\subsection{ECMP vs Subset of shortest paths}\label{sub:subset}
 
-We first assume the traffic demand provided is fluid demand. In other words, we
+We first assume the traffic demand provided is fluid demand, such that, we
 can split the traffic evenly across a number of paths. The traffic distribution
-as depicted in page 1 is the result of fluid traffic splitting according to
-ECMP. We compare the load distribution according to ECMP against the case of
-$k$ paths being found by our algorithm. We run the algorithm twice to find two
-set of paths: Firstly the paths are limited to shortest path only, therefore
-they are a subset of the paths being used by ECMP (denoted by `k-short').
-Secondly we do not impose any constrain on the paths besides they have to be
-loop free (denoted by `k-free'). Therefore, they may be of longer length. In
-the following, we fixed $k=4$ in our evaluations and defined the path length as
-the hop count.
+as depicted in \figurename~\ref{fig:badecmp} is the result of fluid traffic
+splitting according to ECMP. We compare the load distribution according to ECMP
+against the case of $k=4$ paths being found by our algorithm with $\theta=0$,
+i.e. the paths found are restricted to shortest paths.
+
+\begin{figure*}
+\subfloat[]{\includegraphics[width=0.5\columnwidth]{att.const.eps}\label{sub:att}}
+\subfloat[]{\includegraphics[width=0.5\columnwidth]{level3.const.eps}\label{sub:l3}}
+\subfloat[]{\includegraphics[width=0.5\columnwidth]{ft3.const.eps}\label{sub:ft3}}
+\subfloat[]{\includegraphics[width=0.5\columnwidth]{ft5.const.eps}\label{sub:ft5}}
+\caption{Relative load of links in \subref{sub:att} irregular topology 1,
+\subref{sub:l3} irregular topology 2, \subref{sub:ft3} fat tree
+XGFT(2;3,6;3,3), and \subref{sub:ft5} fat tree XGFT(2;5,10;5,5)}\label{fig:const}
+\end{figure*}
+
+\figurename~\ref{fig:const} shows the relative link load in different
+topologies. It plots the load of links in a topology in ascending order. The
+horizontal axes numbers the links; the magnitude of the vertical axes are
+unimportant, hence omitted. The plots demonstrate how balanced is the load
+when different flow placement strategies are used. Here we assume a uniform
+traffic demand, i.e. each distinct pair of hosts in the network sends one unit
+of traffic to each other. In irregular topologies (\figurename~\ref{sub:att}
+and \ref{sub:l3}), any node can send traffic, but in fat tree topologies
+(\figurename~\ref{sub:ft3} and \ref{sub:ft5}), the hosts that can send or
+receive traffic are attached to the edge switches.
+
+Consider ECMP in \figurename~\ref{fig:const}, we see that regular topologies
+such as fat tree can benefit greatly from ECMP, as their links are highly
+balanced (their curves are narrow and flat). Irregular topologies, on the
+contrary, has a significant disparity between the heavily loaded and lightly
+loaded links. Those heavily loaded links are `hot links' of the network that
+are more popular, thus carried more load than others.
+
+When we use our heuristic algorithm to find the multiple shortest paths to
+replace ECMP, we found its performance is close to that of ECMP in terms of the
+maximum link load in the topology. These two curves are even almost coincide in
+irregular topologies and closely approximate to each other in fat trees. The
+difference between them is due to the heuristic nature of the algorithm,
+namely, it does not coordinate the path selection between different pairs. Even
+the two curves are not identical, they are close at the right end. This means
+using only \emph{a few} shortest paths to forward traffic is similar to that of
+using \emph{all} shortest paths in ECMP, but without sacrificing the balance of
+load.
+
+\begin{figure*}
+\subfloat[]{\includegraphics[width=0.5\columnwidth]{att.rand.eps}}
+\subfloat[]{\includegraphics[width=0.5\columnwidth]{level3.rand.eps}}
+\subfloat[]{\includegraphics[width=0.5\columnwidth]{ft3.rand.eps}}
+\subfloat[]{\includegraphics[width=0.5\columnwidth]{ft5.rand.eps}}
+\caption{Relative load of links in \subref{sub:att} irregular topology 1,
+\subref{sub:l3} irregular topology 2, \subref{sub:ft3} fat tree
+XGFT(2;3,6;3,3), and \subref{sub:ft5} fat tree XGFT(2;5,10;5,5). Random traffic demand.}\label{fig:rand}
+\end{figure*}
+
+This claim is valid on another traffic demand as well.
+\figurename~\ref{fig:rand} shows the same plots with a random traffic demand,
+i.e. each distinct pair of hosts sends traffic to each other with a random rate
+between 0 and 1. We still see a flat curve for ECMP in fat tree topologies, and
+with $k=4$ shortest paths gives a performance close to that of ECMP.
+
+%\begin{figure*}
+%\subfloat[]{\includegraphics[width=0.5\columnwidth]{att.cluster.eps}}
+%\subfloat[]{\includegraphics[width=0.5\columnwidth]{level3.cluster.eps}}
+%\subfloat[]{\includegraphics[width=0.5\columnwidth]{ft3.cluster.eps}}
+%\subfloat[]{\includegraphics[width=0.5\columnwidth]{ft5.cluster.eps}}
+%\caption{Relative load of links in \subref{sub:att} irregular topology 1,
+%\subref{sub:l3} irregular topology 2, \subref{sub:ft3} fat tree
+%XGFT(2;3,6;3,3), and \subref{sub:ft5} fat tree XGFT(2;5,10;5,5). Clustered traffic demand.}\label{fig:cluster}
+%\end{figure*}
+%
+%\begin{figure*}
+%\subfloat[]{\includegraphics[width=0.5\columnwidth]{att.pareto.eps}}
+%\subfloat[]{\includegraphics[width=0.5\columnwidth]{level3.pareto.eps}}
+%\subfloat[]{\includegraphics[width=0.5\columnwidth]{ft3.pareto.eps}}
+%\subfloat[]{\includegraphics[width=0.5\columnwidth]{ft5.pareto.eps}}
+%\caption{Relative load of links in \subref{sub:att} irregular topology 1,
+%\subref{sub:l3} irregular topology 2, \subref{sub:ft3} fat tree
+%XGFT(2;3,6;3,3), and \subref{sub:ft5} fat tree XGFT(2;5,10;5,5). Pareto traffic demand.}\label{fig:pareto}
+%\end{figure*}
+
+\subsection{Non-shortest paths}\label{sub:nonshort}
+
+If we relax our constraint so that all loop free paths can be chosen instead of
+just the shortest paths, we found an improvement on irregular topologies.
+Consider the curves labelled with $\theta=\infty$ in
+\figurename~\ref{fig:const} and \figurename~\ref{fig:rand}, we observe a
+lowered maximum link load in those two irregular topologies. This is because,
+in irregular topologies, there may not be a large number of parallel shortest
+paths. Hence we cannot achieve a well-balanced link load even if we forward
+traffic using ECMP, or $k$ shortest paths are used. However, if we relax the
+constraint of shortest paths, we may use a longer path to bypass a hot link,
+hence the network is better balanced. This explains curves of $\theta=\infty$
+in \figurename~\ref{sub:att}--b and \ref{fig:rand}a--b having their right end
+lowered. Anyhow, these further shows that ECMP is not always optimal in load
+balancing traffic.
+
+Nevertheless, allowing any loop free paths is not without disadvantages.
+Besides using a very long path is sometimes not welcomed, consider the fat tree
+topologies in \figurename~\ref{fig:const} and \ref{fig:rand}, it is obvious
+that using non-shortest path make the network more imbalanced. This is because
+in the heuristic algorithm, a path is selected according to a cost function.
+Therefore, in the early phase of the algorithm, it is very likely that a long
+path is chosen due to a slightly lower load, resulting in a larger sum of loads
+across all the links. This is less significant in irregular network because of
+the limited path diversity. Thus a longer path is more likely to content with
+other traffic, which makes it less likely to be chosen. We found that in
+irregular networks, the longer paths are chosen in the later phase of the
+algorithm, in contrast to what is done in regular topologies.
+
+We found that using $\theta=25\%$ can combine the advantages. This allows a
+slightly longer path, in case the shortest path is too congested, but do not
+allow a overly long one. On one hand, this allows a detour around congested
+links in irregular network, and on the other hand, enforced shortest path to be
+used in fat trees, since the alternative paths is usually doubly long. In
+\figurename~\ref{fig:const}-\ref{fig:rand}, we see the curve of $\theta=25\%$
+overlaps with that of $\theta=0$ in fat tree topologies and overlaps with that
+of $\theta=\infty$ in irregular topologies at the right ends. We justify this
+value of $\theta$ by the fact that in data center networks, the usual hop count
+in a paths is a handful. Thus allowing 25\% longer essentially means to have
+one or two more hops beyond the shortest path, which have limited impact on the
+end to end latencies.
+
+\subsection{Robustness to traffic matrix}\label{sub:varied}
+
+Our heuristic algorithm takes a traffic matrix as input. A major criticism on
+this approach is the accuracy of the traffic matrix. Not only it is difficult
+to measure the traffic matrix, but also it is varying quickly with time. The
+algorithm relies on the traffic matrix to select a path. If the paths provided
+by the algorithm is very sensitive to the accuracy of the traffic matrix, it
+may not be very useful.
+
+We evaluated the algorithm's sensitivity to traffic matrix by applying a varied
+traffic matrix to the paths found by the algorithm. We varied the traffic
+matrix by multiplying each entry by a random value between 0.5 and 1.5, then
+feed in this traffic matrix to the paths found by the heuristic algorithm with
+$k=4$ and $\theta=25\%$. The variation is large, but according to
+\figurename~\ref{fig:var}, the link load does not change in scale. Especially
+in the irregular network (\figurename~\ref{fig:var}a), the maximum link load is
+increased by about 3\%, since the hot link in the irregular network is used by
+a lot of source-destination pairs, which the variation between different pairs
+are canceling out each other. The fat tree network in
+\figurename~\ref{fig:var}b shows around 15\% variation in the maximum link load.
+This is because the high degree of path diversity make the variation in
+traffic intensity less easy to cancel out. However, the increase in the maximum
+link load is still less than the variation in the traffic intensity.  For
+reference purposes, we include in \figurename~\ref{fig:var} the link load
+according to ECMP when the varied traffic matrix is applied.
 
 \begin{figure}
-\centering\includegraphics[width=0.8\columnwidth]{cost-max/ft-4.all.full.pdf}
-\caption{Fat-tree network of degree 4}
+\subfloat[]{\includegraphics[width=0.5\columnwidth]{att.rand.var.eps}}
+\subfloat[]{\includegraphics[width=0.5\columnwidth]{ft5.rand.var.eps}}
+\caption{Varied traffic matrix applied to (a) irregular topology 1 and (2) fat tree XGFT(2;5,10;5,5)}\label{fig:var}
 \end{figure}
 
-In figure 1, we evaluate the different way of routing traffic by a fat-tree
-topology of degree 4. The horizonal axis represents the links in ascending
-order of load. The vertical axis represents the load to a link, in some
-arbitrary unit. The traffic matrix used here assumes all the host in the
-network send a unit traffic to every other hosts. Because of the highly regular
-topology, the ECMP performed the best in terms of both load balancing and
-minimizing the maximum link load across the network. Interestingly, the
-$k$-path algorithms performs differently depend on whether the
-shortest-path-only constraint is imposed. When we limit our paths to only
-shortest-path, the performance is not as good as ECMP but close enough. The
-difference from ECMP is due to the heuristic nature of the algorithm, namely,
-it does not coordinate the path selection between the source-destination pairs.
 
-In case the path selection is free from the path length constraints, we found
-that it performs badly. One can see from the figure that, the heaviest loaded
-link is way more loaded than the case in ECMP. Moreover, some links are under
-utilized. These are resulted from the inefficiency of the heuristic algorithm.
-Furthermore, the total area under the curve is also larger in this case than
-the other two, reflecting the fact that the paths selected are lengthier in
-general.
+\subsection{Effect on the number of paths used}\label{sub:k}
+
+The number of paths $k$ is a parameter to the algorithm. A natural question is
+the optimal value of $k$ to be used. In the algorithm, $k$ specifies the
+maximum number of paths to be used, which in certain cases, we may not be able
+to find $k$ distinct paths for a particular source-destination pair, especially
+when the topology does not provide enough path diversity for a particular pair
+of nodes. Therefore, we should understand $k$ as the parameter on the
+\emph{maximum} number of paths between two nodes.
 
 \begin{figure}
-\centering\includegraphics[width=0.8\columnwidth]{cost-max/att.all.full.pdf}
-\caption{Irregular topology (AT\&T)}
+\includegraphics[width=0.5\columnwidth]{att.rand.k.eps}%
+\includegraphics[width=0.5\columnwidth]{ft5.rand.k.eps}
+\caption{Maximum link load vs $k$ under random traffic in (a) irregular topology and (b) XGFT(2;5,10;5,5)}\label{fig:krand}
 \end{figure}
-
-Besides the regular topologies like fat-tree, we also evaluated on irregular
-topologies. Figure 2 shows one of the results. This is a typical result from an
-irregular network: The curves of ECMP and k-short are not narrow and flat, but
-instead, crossing a broad spectrum of link loads. This is resulted from the
-property of the irregular topologies that, certain links are `hot links' of the
-network that are more popular, so that they carried significantly heavier load
-than others. The curves of ECMP and k-short are almost coincide. Therefore,
-k-short performed as good as ECMP. Surprisingly, unlike the case in fat-tree,
-the curve of k-free shows a more balanced link load and lower maximum link
-utilization (compare the rightmost end of the curves). This is because, as hot
-links are present in the topology, lifting the shortest-path constraint to path
-selection allows us to detour around those hot spots, and hence lowered its
-load. The links at the rightmost end of the curves correspond to those hot
-links. We can observe a significant decrease in the load in k-free compared to
-the other two.
 
 \begin{figure}
-\centering\includegraphics[width=0.8\columnwidth]{cost-max/level3.all.full.pdf}
-\caption{Irregular topology (Level-3)}
+\includegraphics[width=0.5\columnwidth]{att.pareto.k.eps}%
+\includegraphics[width=0.5\columnwidth]{ft5.pareto.k.eps}
+\caption{Maximum link load vs $k$ under skewed traffic in (a) irregular topology and (b) XGFT(2;5,10;5,5)}\label{fig:kpareto}
 \end{figure}
 
-Such result in the irregular topology as mentioned above is particular to the
-particular toplogy. While we observe similar result in many topologies in
-Rocketfuel, we also found a few topology that shows no significant difference
-between the different ways of multipath forwarding. Figure 3 is such an
-example. We can see that the curves of the three methods of placing load are
-more or less identical. This is because the network in concern does not show
-enough path diversity. In other words, the limitation of the topology makes the
-difference between the different methods unobservable.
+\figurename~\ref{fig:krand} shows the maximum link load in a topology against
+$k$ under random traffic. The traffic matrix is the same as the one used in
+\figurename~\ref{fig:rand}, and we fix $\theta=25\%$ in the heuristic
+algorithm. In \figurename~\ref{fig:krand}b, it is obvious that we can lower the
+maximum link load with a larger $k$.  While it is trivial that a larger
+$k$ can provide more paths to spread out the traffic and hence lower the
+maximum load, it is interesting to see that the curve levels off at a small
+value of $k=2$. This can be explained by the fact that the $k$ paths provided
+for a pair of nodes may not be mutually disjoint.  Thus further increasing $k$
+cannot reduce the load on those shared links by multipath routing.
 
-Among these figures shown, we can find that
-\begin{itemize}
-\item ECMP and k-short performed roughly as good as each other; and
-\item k-path is better then ECMP and k-short in irregular topologies where
-there are a few hot spot links. This also supports the claim that ECMP is not
-always optimal.
-\end{itemize}
-Therefore, by using k-short, it is possible to use fewer number of forwarding
-path for a source-destination pair than ECMP, but without sacrificing the
-balance of load as provided by ECMP.
+In \figurename~\ref{fig:krand}a, however, $k$ does not show any effect on the
+maximum link load. It is partially due to the topology does not provide enough
+path diversity, but also because of the traffic between nodes are even. We
+repeated the evaluation with a skewed traffic matrix, i.e. among the nodes in
+the topology, we randomly select some of them as hot sender and some as hot
+receivers. The cardinality of the set of hot senders and hot receivers are both
+20\% of total number of nodes. The traffic from hot senders to hot receivers
+comprises 80\% of total traffic across the network. The result is depicted in
+\figurename~\ref{fig:kpareto}. Here we see a magnified effect of $k$ to the
+maximum link load, but it levels off eventually at a larger value of $k$. An
+even more skewed traffic matrix can be constructed. An extreme would be to have
+only one flow between two nodes in the network. Then we can expect it can enjoy
+a larger $k$ until the paths found have some overlap. But such traffic model
+may not be realistic in practice.
 
-The path cost function used in producing the above figures are
-\eqref{maxfunction}. We also repeated the experiment with the other three cost
-functions mentioned in section 3. Those result is consistent with the above
-claims, but slightly different in the magnitude of the link loads. One can
-compare figure 4, which is using \eqref{sumfunction} as the cost function,
-against figure 2. Whereas the other two curves are almost the same, the curve
-corresponding to k-free gives a smaller maximum link load in figure 4.
+From these figures, we see that a small number of $k$ (e.g. $k=4$) is enough to
+load balance traffic. Taking the fat tree topology XGFT(2;5,10,5,5) as an
+example, there are 25 distinct shortest paths between any two nodes. But
+\figurename~\ref{fig:krand}-\ref{fig:kpareto} shows that we need no more than 4
+paths from the heuristic algorithm. This is a encouraging result as it means
+that a small number of paths is sufficient in practice to achieve a good load
+balancing, as a result, the management overhead is limited.
 
-\begin{figure}
-\centering\includegraphics[width=0.8\columnwidth]{cost-sum/att.all.full.pdf}
-\caption{Irregular topology (AT\&T), using \eqref{sumfunction} as cost function}
-\end{figure}
+\subsection{Dynamic traffic distribution}\label{sub:dyn}
 
-\subsection{Dynamic traffic distribution}
-
-Another set of evaluation is performed assuming we have to place individual
-flows on demand. 
+The above traffic distribution is assuming a fluid traffic that we can
+perfectly split across the multiple paths provided. However, usually we do not
+want to split a \emph{flow} across different paths to avoid the problems of
+packet reordering. Usually a \emph{flow} here is defined as a \emph{five-tuple
+flow}, namely, the one identified by the set of source and destination
+addresses, protocol, and source and destination port number.  Therefore, we
+devised a discrete event simulation to verify the results above is valid in
+this setting.
 
 This evaluation is performed as follows: Assume we have the topology and
 traffic matrix as before, we can then find the forwarding paths for different
 source-destination pairs according to the algorithm. Then, we read the flow
-descriptions and place them into the network. The description of one flow
-provides the information about the flow's source and destination node, the size
-(in term of traffic rate of data), the time of arrival, and its holding time.
-We assume it is a CBR flows of predetermined holding time for simplicity. A
-flow is placed into the network one at a time. Each flow uses one path, even if
-the network provided enough path diversity. This is to simulate the fact that,
-we usually keep a flow into only one path to avoid packet reordering. The path
-selection for a particular flow is random. Adaptive placement of flows
-according to the real-time load can be a future extension. When a flow is
-placed to a path, all the links correspond to this path would have their load
-increased. We keep track on the load of each link at any time.
+descriptions and place them into the network on one of the those paths found by
+the algorithm. The description of one flow provides the information about the
+flow's source and destination node, the size (in term of traffic rate of data),
+the time of arrival, and its holding time.  We assume it is a CBR flows of
+predetermined holding time for simplicity. A flow is placed into the network
+one at a time. Each flow uses one path, even if the network provided enough
+path diversity, as a means to avoid packet reordering. The path selection for
+a particular flow is random. Adaptive placement of flows according to the
+real-time load can be a future extension, whereas the random placement can be
+regarded as the baseline performance. When a flow is placed to a path, all the
+links correspond to this path would have their load increased. Their load will
+be decreased when this flow expires. We keep track on the load of each link at
+any time.
 
 \begin{figure}
-\centering\includegraphics[width=0.48\columnwidth]{ft-4.TrimEcmp.png}
-\centering\includegraphics[width=0.48\columnwidth]{ft-4.SimuEcmp.png}
-\caption{Fat-tree topology of degree 4, link load vs time}
+\includegraphics[width=0.5\columnwidth]{att.rand.maxmin.eps}%
+\includegraphics[width=0.5\columnwidth]{ft5.rand.maxmin.eps}
+\caption{Maximum link load vs time under random flows in (a) irregular topology and (b) XGFT(2;5,10;5,5)}\label{fig:dyn}
 \end{figure}
 
-Figure 5 shows the result from the evaluation using dynamic traffic. The
-topology is consideration is a fat-tree topology built with 8-port switches.
-The traffic matrix used is same as the one in the previous evaluation, namely,
-each pair of source-destination nodes has one unit of traffic. The flow dynamic
-used is to have Poisson arrival and exponential holding time, with a flow size
-draw randomly from a uniform distribution between 0 and 1. The arrival of flows
-lasts from time 0 to 100. The horizontal axis in figure 5 represents the time,
-the vertical axis is the size of link load. Each link in the topology is
-represented by one continuous curve, showing its link load at any given time.
+\figurename~\ref{fig:dyn} shows the result from the evaluation using dynamic
+traffic. The traffic matrix is same as the one used in
+\figurename~\ref{fig:rand}. We convert the traffic matrix into a series of
+flows with Poisson arrival and exponential holding time, so that their average
+load corresponds to the entry in the traffic matrix. The arrival of flows lasts
+from time 0 to 100. The maximum link load in the topology against time is
+plotted as a continuous curve.
 
-The two plots in figure 5 compares the link load when ECMP is used against the
-k-path and k-short schemes. The topology contains 512 unidirectional links,
-therefore the each plot shows 512 curves of the same color, corresponding to
-the different way of multipath forwarding. On the left plot, we see that the
-two `walls' of curves corresponding to ECMP and k-short are overlapping almost
-perfectly. This means the k-short perform as good as ECMP from the point of
-view of overall link load across the network. On the right plot, however, the
-`wall' correspond to k-path is bigger than that of ECMP: Which the red area
-surrounded the green area entirely. This tells that k-path has a worse
-performance than ECMP, not only it is less balanced (i.e. wider in the plot),
-but also the heaviest link carries more traffic than the ECMP counterpart (by
-observing the top border of the colored area). Note, the green area in the two
-plots, which correspond to the case of ECMP, are identical.
+The curve labelled as k-path correspond to the multipath routing according to
+the paths given by the algorithm with $k=4$ and $\theta=25\%$.
+\figurename~\ref{fig:dyn}b shows that the curves of k-path and ECMP are
+overlapping in fat tree topology. This means the former is as good as the
+latter. Similarly, \figurename~\ref{fig:dyn}a shows the two curves in an
+irregular topology. We can see an observable improvement of the k-path
+algorithm over ECMP, in the sense that the former has a lower maximum link load
+than the latter. This conclusion is consistent with that of
+\figurename~\ref{fig:rand}. For tidiness, we do not show the curves with
+$\theta=0$ and $\theta=\infty$ in \figurename~\ref{fig:dyn}, but we confirmed
+that their flow-based evaluation is consistent with the abovementioned.
 
-\begin{figure}[h]
-\centering\includegraphics[width=0.48\columnwidth]{att.TrimEcmp.png}
-\centering\includegraphics[width=0.48\columnwidth]{att.SimuEcmp.png}
-\caption{Irregular topology (AT\&T), link load vs time}
-\end{figure}
+In summary, although we do not consider a flow can be split in this
+evaluation, we see the conclusion the same here as in sections
+\ref{sub:subset} and \ref{sub:nonshort}, namely, the paths from the algorithm with
+$\theta=0$ is as good as ECMP is all scenarios tested, and $\theta=\infty$ can
+perform better in irregular topologies where there are a few hot-spot links, or
+perform worse in highly regular topologies such as fat-tree. Therefore,
+$\theta=25\%$ is suggested to enjoy the benefit in both topologies.
 
-Similarly, figure 6 shows the case on an irregular topology same as the one in
-figure 2. On the left plot, we see the same result as in figure 5. The
-performance of ECMP and k-short are roughly identical. On the right plot,
-however, we can see an observable improvement of k-path over ECMP by comparing
-the topmost curve of the two colors. This time, the k-path gives a more
-balanced load than ECMP on this particular topology.
+\section{Conclusion}
 
-In summary, although we do not consider a flow can be splitted in this
-evaluation, we see the conclusion the same here as in section 5.1, namely,
-k-short is as good as ECMP is all scenarios tested, and k-path can perform
-better in irregular topologies where there are a few hot-spot links, or perform
-worse in highly regular topologies such as fat-tree.
+In this paper, we devised a heuristic algorithm to find a subset of loop free
+paths between two nodes in a topology, so that we can approximately minimize
+the maximum link load. The heuristic algorithm takes a traffic matrix as the
+input to provide estimated measure on the relative traffic intensity between
+different pairs of nodes. This algorithm tries to use only a few paths to
+forward traffics between different nodes so that contention is minimized. The
+output of the algorithm, namely, the set of paths between every pair of nodes,
+can be implemented in the network as end-to-end tunnels such as MPLS LSP, to
+forward traffic at a later time. The benefit of doing so is to allow the
+controllability on the routing of traffic and limit the operation overhead by
+limiting the number of paths involved.
 
-\subsection{Effect on $k$}
-
-We have also repeated the experiment with different values of $k$.
-
-\begin{figure*}
-\includegraphics[width=0.33\textwidth]{att.k=2.pdf}%
-\includegraphics[width=0.33\textwidth]{cost-max/att.all.full.pdf}%
-\includegraphics[width=0.33\textwidth]{att.k=8.pdf}
-\caption{Irregular topology (AT\&T), with $k=2,4,8$ respectively from left to right}
-\end{figure*}
-
-Figure 7 shows the case for the typical irregular topology. Overall, there are
-not much difference between the case of $k=2$, $k=4$, and $k=8$. Surely, ECMP
-and k-short are mostly identical in all the three plots. The curves for k-path,
-however, only shows a minor change. The load of the heaviest link according to
-k-path decreased slightly as $k$ increases. This behaviour can be explained by
-the property of the topology that a high degree of path diversity is not
-available in many source-destination pairs. Therefore, even if we increase $k$,
-the choice is not enlarged much. Moreover, even if more paths are available for
-a source-destination pair, the paths are likely not mutually disjoint, which we
-cannot reduce the load on those shared links by multipath routing.
-
-\begin{figure*}
-\includegraphics[width=0.33\textwidth]{ft-4.k=1.pdf}%
-\includegraphics[width=0.33\textwidth]{ft-4.k=2.pdf}%
-\includegraphics[width=0.33\textwidth]{cost-sum/ft-4.all.full.pdf}
-\caption{Fat-tree topology, with $k=1,2,4$ respectively from left to right}
-\end{figure*}
-
-The counterpart for fat-tree topology is shown in figure 8. As we know from
-section 5.1, k-path does not perform well in such topology due to the
-inefficiency of the heuristic algorithm. However, we see a difference on
-k-short as we increase the value of $k$. When $k=1$, we see that k-short
-perform poorly. This is because we did not exploit the path diversity available
-to balance the load. But as $k=2$ or above, the performance of k-short is close
-to ECMP. Further increasing the value of $k$ only introduces marginal
-improvement. This shows that, we do not need a lot of parallel paths to bring a
-balanced load to a network. A small number of paths is sufficent. This also
-endorses our claim that we do not need to use the extensive path diversity as
-in ECMP to achieve a good load balancing.
+We evaluated the algorithm by different traffic models. In the evaluations, we
+found that forwarding traffic to all the possible paths is not optimal as the
+paths may partially overlap, and thus the link load is imbalanced. Hence this
+justifies our approach on using a subset of paths instead of ECMP in term of
+load balancing. Furthermore, we found that allowing the traffic to route over
+slightly longer paths can improve load balancing in some topologies. If there
+are hot links in such topologies, enforcing shortest path routing rules out the
+possibility of using a detour to bypass those hot links. Using non-shortest
+path is not easy to guarantee the paths are loop free when routing is done
+hop-by-hop, but it is trivial when end-to-end tunnels are used. We also found
+that the number of paths per pair of nodes is small to achieve a good level of
+load balancing. These supports our proposal of using a few tunnels between
+pairs of nodes for better control and better load balancing.
 
 \balance
 \bibliographystyle{IEEEtran}
